@@ -23,3 +23,7 @@
 合成与独立引擎测试不调用模型、不消耗推理额度、不访问 Langfuse。真实桌面验收使用两条无敏感信息的测试请求。
 
 5.5.3 兼容性：位置参数形式的插件 CLI 命令存在参数错位，安装脚本使用临时认证引擎的插件 API；桌面 worker 不保留 CODEBUDDY_PLUGIN_DIRS，因此必须持久注册。默认 hooks/hooks.json 与 manifest 配置可能被合并两次，本插件显式指定 hooks/events.json，并要求重启后的运行时恰好注册 6 个 Hook。
+
+## 第二阶段 A（0.2.0）
+
+追加的真实写入验收见 [阶段 2A 记录](acceptance-phase2a-2026-09-08.md)。总计 20 项自动测试通过；14 条远端 observation 的层级、时间、Session 与 Token 全部匹配，重复上传新增 0 条。正文选择、缓存与费用仍待阶段 2B。

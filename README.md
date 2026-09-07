@@ -1,16 +1,15 @@
 # WorkBuddy Langfuse Plugin
 
-当前版本 **0.1.1 / 第一阶段：本地诊断**。这版用于确认 WorkBuddy 主任务能否产生完整、可关联的原生追踪，为后续 Langfuse 上报准备可靠数据。
-
-**真实桌面验收通过（2026-09-08）**：已修复桌面插件加载和子 span Session 缺失。两轮主任务共 18 个 spans，Session 缺失与重复均为 0，四类核心 Hook 各触发两次。详见[修复验收](docs/acceptance-2026-09-08.md)。
-
-已实现：命令型 Hook 诊断插件、标准 OTLP Collector、Langfuse 类型与 Session 字段转换、模拟链路测试、真实数据统计。**本阶段没有 Langfuse exporter，不需要填写密钥，不会回灌历史会话。**
+当前版本 **0.2.0 / 第二阶段 A：元数据与 Token 上报**。第一阶段的桌面插件加载与子 span Session 问题已修复并通过真实验收；第二阶段 A 已完成本机 Langfuse 的两轮实际写入与 Token 对照。
 
 | 阶段 | 交付 | 状态 |
 |---|---|---|
-| 1 | 原生链路接收、字段映射、Hook 诊断、可重复运行的验证 | 桌面验收通过（0.1.1） |
-| 2 | Langfuse 上报、内容选择与用量校验、两轮会话验收 | 阶段 1 验证后实现 |
-| 3 | 运行中状态、按步骤增量采集、去重与恢复 | 阶段 2 验证后实现 |
+| 1 | 原生链路、Session 关联、持久插件与 Hook 诊断 | 通过，修复版本 v0.1.1-phase1 |
+| 2A | 指定 Session 上传、实际 Token 对照、重复执行跳过已发送记录 | 通过，版本 v0.2.0-phase2a |
+| 2B | 可选正文采集、工具输入输出、缓存用量与费用核验 | 待实现；当前正文仍关闭、费用未知 |
+| 3 | 自动增量上报、运行状态、完整恢复流程 | 待实现 |
+
+验收记录：[第一阶段修复](docs/acceptance-2026-09-08.md)、[第二阶段 A](docs/acceptance-phase2a-2026-09-08.md)。[第二阶段操作步骤](docs/phase-2.md)包含配置、上传预览和真实入库核验。上传必须指定 Session 并加 `--send`，没有自动上传或历史回灌。
 
 ## 开始验证
 
@@ -58,12 +57,12 @@ npm run workbuddy:launch
 
 取得测试任务的 Session ID 后，可执行 `npm run accept:phase1 -- <Session ID>`。命令按该 Session 的两条主 Trace 检查所有子 span，输出 JSON；任何一项未通过均以非零退出码结束。它不会把缺少 Session 的子 span 从验收范围中排除。
 
-## 本阶段的数据范围
+## 采集的数据范围
 
 - Collector 只保存结构元数据：来源、Session、span 类型、模型名、调用 ID、原始起止时间、可用的 Token 数量。已知的消息、工具内容、错误正文和资源身份字段不会写入诊断文件。
 - Hook 只保存事件名、Session、工具名和调用 ID；不读取 transcript，也不保存提示词、工具参数或返回正文。Hook 失败静默退出，不向 Agent 注入内容。
-- 启动入口使用 WorkBuddy 默认的 `codebuddy` 语义，关闭正文开关。没有开启会自动带出模型输入输出的 `agentlens` 模式。原生没有 usage 时按未知展示，阶段 2 再核验其采集路径。
-- 这是诊断记录，**没有实现去重上报**。重复的 trace/span ID 会显示在 `duplicateIdentities`，不会被统计工具隐藏。状态工具读取本地 SQLite 关联结果，保留全部接收记录，不是增量上传器。
+- 第一阶段启动入口使用 `codebuddy` 语义，原生没有 usage 时按未知展示。第二阶段入口显式使用 `agentlens` 取得输入/输出 Token；该模式会在 WorkBuddy 内部生成模型正文，但本项目 Collector 在落盘和上传前仍过滤正文。两个入口均关闭四个正文开关。
+- 本地预览是诊断记录，**保留全部重复到达**。重复的 trace/span ID 会显示在 `duplicateIdentities`，不会被统计工具隐藏。状态工具读取本地 SQLite 关联结果，保留全部接收记录。第二阶段手动上传器另用持久发送账本跳过已确认发送的 ID；不依赖 Langfuse 展示去重。网络结果不确定时停止，不能保证端到端 exactly-once。
 - WorkBuddy 自带的其他遥测渠道维持其原有行为；本地端点只限定本项目的采集通道，不表示 WorkBuddy 所有网络行为都变成本地。
 
 ```mermaid
@@ -74,6 +73,8 @@ flowchart LR
   M --> R[转换后原始元数据 JSONL]
   H[WorkBuddy 命令 Hook] --> E[本地 Hook 事件]
   F --> S[npm run status]
+  F --> U[指定 Session / 发送账本]
+  U --> L[Langfuse OTLP v4]
   E --> S
 ```
 
@@ -84,6 +85,8 @@ flowchart LR
 | OTLP 接收地址 | `http://127.0.0.1:14318/v1/traces` |
 | 关联结果 | `.local/collector/traces.sqlite`；用 `npm run preview:export` 导出 JSONL，不提交 Git |
 | 关联前元数据 | `.local/collector/traces.jsonl`，用于对照原始缺失字段，不提交 Git |
+| 上传凭证 | 项目 `.env`；Git 忽略，不传给 WorkBuddy |
+| 上传账本 | `.local/langfuse-deliveries.sqlite`；保留它以避免重复发送 |
 | Hook 诊断 | `~/.workbuddy/langfuse-plugin/hooks.jsonl` |
 | WorkBuddy 启动日志 | `.local/workbuddy-startup.log`，不提交 Git；可能包含服务运行信息，请勿直接分享 |
 | 插件 | `plugins/workbuddy-langfuse/` |
@@ -107,7 +110,7 @@ npm run test:collector
 npm run test:plugin
 ```
 
-- `test`：16 项检查覆盖 Hook 默认关闭、内容不落盘、并发写入、Session 跨批关联、重启、冲突、重复可见与验收判定。
+- `test`：20 项检查覆盖 Hook 默认关闭、内容不落盘、并发写入、Session 跨批关联、重启、冲突、重复可见与验收判定，以及上传账本与远端验证。
 - `test:collector`：独立容器把模拟 JSON 转为 protobuf，再通过正式接收和转换配置；继续经过 Session 关联器，检查 ID、层级、时间、用量、缺失 Session 补齐和内容过滤。测试结束自动清理容器。
 - `test:plugin`：以临时配置启动 WorkBuddy 内置引擎，安装插件、重启引擎并验证持久启用与恰好 6 个 Hook，最后卸载；没有模型请求，不修改你的 WorkBuddy 配置。
 

@@ -68,7 +68,7 @@ async function main(command) {
         workbuddyFound: await exists(executable), workbuddyVersion: version.status === 0 ? version.stdout.trim() : null,
         configDirectoryExists: await exists(configDir), dockerReady: docker.status === 0,
         collectorEndpoint: `http://127.0.0.1:${port}/v1/traces`, hookDataDirectory: dataDir,
-        phase: '1: local metadata preview; no Langfuse exporter' };
+        phase: '2A: local metadata capture; explicit per-session Langfuse upload' };
       console.log(JSON.stringify(checks, null, 2));
       if (!checks.nodeSupported || !checks.workbuddyFound || !checks.dockerReady) process.exitCode = 1;
       break;
@@ -103,12 +103,13 @@ async function main(command) {
         note: '诊断统计保留重复记录用于发现问题；不是去重上报器。usage 缺失表示未知。' }, null, 2));
       break;
     }
-    case 'launch': {
+    case 'launch':
+    case 'launch:phase2': {
       requireWorkBuddyClosed();
       await prepare();
       const env = { ...process.env, CODEBUDDY_CODE_ENABLE_TELEMETRY: '1', OTEL_TRACES_EXPORTER: 'otlp',
         OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: `http://127.0.0.1:${port}/v1/traces`, OTEL_EXPORTER_OTLP_TRACES_PROTOCOL: 'http/protobuf',
-        OTEL_SERVICE_NAME: 'workbuddy', OTEL_SEMCONV: 'codebuddy',
+        OTEL_SERVICE_NAME: 'workbuddy', OTEL_SEMCONV: command === 'launch:phase2' ? 'agentlens' : 'codebuddy',
         OTEL_LOG_USER_PROMPTS: '0', OTEL_LOG_TOOL_DETAILS: '0', OTEL_LOG_TOOL_CONTENT: '0', OTEL_LOG_RAW_API_BODIES: '0',
         WORKBUDDY_LANGFUSE_DATA_DIR: dataDir, WORKBUDDY_LANGFUSE_ENABLED: '1',
         PATH: `${dirname(process.execPath)}:${process.env.PATH || ''}`,
