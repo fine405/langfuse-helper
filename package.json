@@ -10,6 +10,7 @@
     "collector:stop": "node scripts/cli.mjs collector:stop",
     "demo": "node scripts/cli.mjs demo",
     "status": "node scripts/cli.mjs status",
+    "accept:phase1": "node scripts/accept-phase1.mjs",
     "workbuddy:launch": "node scripts/cli.mjs launch",
     "test": "node --test test/*.test.mjs",
     "test:collector": "node scripts/test-collector.mjs",

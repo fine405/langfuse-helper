@@ -2,11 +2,13 @@
 
 当前版本 **0.1.0 / 第一阶段：本地诊断**。这版用于确认 WorkBuddy 主任务能否产生完整、可关联的原生追踪，为后续 Langfuse 上报准备可靠数据。
 
+**真实桌面验收未通过（2026-09-07）**：两轮主任务的模型和工具链路已收到，但 6 个子 span 缺少 Session，插件开发目录未被实际 worker 保留，Hook 零触发。阶段 2 暂未启动。详见[验收结果](docs/acceptance-2026-09-07.md)。以下启动步骤目前用于复现和排障，不能作为已接入成功的安装流程。
+
 已实现：命令型 Hook 诊断插件、标准 OTLP Collector、Langfuse 类型与 Session 字段转换、模拟链路测试、真实数据统计。**本阶段没有 Langfuse exporter，不需要填写密钥，不会回灌历史会话。**
 
 | 阶段 | 交付 | 状态 |
 |---|---|---|
-| 1 | 原生链路接收、字段映射、Hook 诊断、可重复运行的验证 | 当前版本；桌面主任务待你验证 |
+| 1 | 原生链路接收、字段映射、Hook 诊断、可重复运行的验证 | 桌面验收未通过：插件加载与子 span Session 待修复 |
 | 2 | Langfuse 上报、内容选择与用量校验、两轮会话验收 | 阶段 1 验证后实现 |
 | 3 | 运行中状态、按步骤增量采集、去重与恢复 | 阶段 2 验证后实现 |
 
@@ -37,6 +39,8 @@ npm run workbuddy:launch
 
 这个入口仅为本次 WorkBuddy 进程设置本地 OTLP 地址和插件开发目录，不修改 `settings.json`。已有 WorkBuddy 未退出时，命令会停止，不会关闭你的任务。
 
+已知限制：本机 5.5.3 的实际桌面 worker 未保留 `CODEBUDDY_PLUGIN_DIRS`，所以该开发目录方式只在独立引擎测试中通过，尚不能让桌面主任务自动触发本插件 Hook。
+
 新建一个测试任务，发送：
 
 ```text
@@ -50,6 +54,8 @@ npm run workbuddy:launch
 ```
 
 等 5 秒，再执行 `npm run status`。按[第一阶段验收表](docs/phase-1.md)检查真实 `native` 数据和 `hooks` 计数。**如果只有 synthetic 或辅助 span，第一阶段仍未通过。**
+
+取得测试任务的 Session ID 后，可执行 `npm run accept:phase1 -- <Session ID>`。命令按该 Session 的两条主 Trace 检查所有子 span，输出 JSON；任何一项未通过均以非零退出码结束。它不会把缺少 Session 的子 span 从验收范围中排除。
 
 ## 本阶段的数据范围
 
