@@ -1,9 +1,11 @@
 {
   "name": "workbuddy-langfuse-plugin",
-  "version": "0.2.0",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=24" },
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
     "doctor": "node scripts/cli.mjs doctor",
     "collector:start": "node scripts/cli.mjs collector:start",
@@ -20,6 +22,15 @@
     "plugin:uninstall": "node scripts/cli.mjs plugin:uninstall",
     "test": "node --test test/*.test.mjs",
     "test:collector": "node scripts/test-collector.mjs",
-    "test:plugin": "node scripts/test-plugin.mjs"
+    "test:plugin": "node scripts/test-plugin.mjs",
+    "test:langfuse": "node scripts/test-langfuse.mjs",
+    "service:start": "node scripts/sidecar.mjs start",
+    "service:stop": "node scripts/sidecar.mjs stop",
+    "service:status": "node scripts/sidecar.mjs status",
+    "service:foreground": "node scripts/sidecar.mjs serve",
+    "recover": "node scripts/recovery.mjs",
+    "configure": "node scripts/setup.mjs configure",
+    "start": "node scripts/setup.mjs start",
+    "stop": "node scripts/setup.mjs stop"
   }
 }

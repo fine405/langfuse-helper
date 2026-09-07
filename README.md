@@ -1,121 +1,105 @@
 # WorkBuddy Langfuse Plugin
 
-当前版本 **0.2.0 / 第二阶段 A：元数据与 Token 上报**。第一阶段的桌面插件加载与子 span Session 问题已修复并通过真实验收；第二阶段 A 已完成本机 Langfuse 的两轮实际写入与 Token 对照。
+**v0.4.0 · 阶段 1–3 已实现并通过验收。** [查看验收证据](docs/acceptance-phase3-2026-09-08.md)
 
-| 阶段 | 交付 | 状态 |
-|---|---|---|
-| 1 | 原生链路、Session 关联、持久插件与 Hook 诊断 | 通过，修复版本 v0.1.1-phase1 |
-| 2A | 指定 Session 上传、实际 Token 对照、重复执行跳过已发送记录 | 通过，版本 v0.2.0-phase2a |
-| 2B | 可选正文采集、工具输入输出、缓存用量与费用核验 | 待实现；当前正文仍关闭、费用未知 |
-| 3 | 自动增量上报、运行状态、完整恢复流程 | 待实现 |
+把 WorkBuddy 桌面任务中的模型调用、工具执行和 Token 用量自动送到你的 Langfuse 项目，用同一个 Session 查看多轮任务、原生父子关系和每一步的真实耗时。
 
-验收记录：[第一阶段修复](docs/acceptance-2026-09-08.md)、[第二阶段 A](docs/acceptance-phase2a-2026-09-08.md)。[第二阶段操作步骤](docs/phase-2.md)包含配置、上传预览和真实入库核验。上传必须指定 Session 并加 `--send`，没有自动上传或历史回灌。
+这是一个独立集成项目，包含 **WorkBuddy 插件、本地 Collector 和上报服务**。插件负责通知本地服务任务发生了什么；原生 OpenTelemetry 提供正式追踪记录；任务文件只补充模型、缓存、积分和可选正文。无需安装 npm 依赖。当前适配与实测环境为 **macOS、WorkBuddy 5.5.3、Node.js 24、Docker Desktop、Langfuse OTLP v4**。
 
-## 开始验证
+## 开始使用
 
-需要 macOS、WorkBuddy、Node.js 24+ 和已启动的 Docker Desktop。无需安装 npm 依赖。
+准备一个 Langfuse 项目，在项目设置的 API Keys 页面生成项目密钥。已有自托管 Langfuse 或 Langfuse Cloud 均可配置；本仓库不部署或修改你的 Langfuse 服务。
 
 ```bash
-cd /Users/boqingyun/workspace/ai/workbuddy-langfuse-plugin
-npm run doctor
-npm run collector:start
-npm run demo
+git clone https://github.com/fine405/workbuddy-langfuse-plugin.git
+cd workbuddy-langfuse-plugin
+npm run configure
 ```
 
-首次启动需要下载固定版本的 Collector 和 Node 镜像。等 2 秒后运行：
+跟随提示填写 Langfuse 地址、Public Key 和 Secret Key。密钥不回显、不提交 Git。默认 `metadata` 只发送结构和用量；选择 `text` 才发送经过脱敏、截断的用户问题、模型回复和工具输入输出。
+
+完全退出 WorkBuddy，启动 Docker Desktop，然后：
 
 ```bash
-npm run status
+npm start
 ```
 
-预期 `synthetic` 中出现 1 个 trace、4 个 spans，其中 `agent=1`、`generation=1`、`tool=1`、`span=1`。再次执行 demo 会创建新模拟 trace，因此数量会增加。**synthetic 成功只证明接收和转换通道可用，不代表 WorkBuddy 已接入。**
+这个入口会检查环境、安装或更新插件、启动本地服务，并带采集配置打开 WorkBuddy。以后需要采集时也通过 `npm start` 打开。**直接点击普通 WorkBuddy 图标启动，不会自动启用本项目的采集。**
 
-然后完全退出 WorkBuddy，通过下面的入口重新打开：
-
-```bash
-npm run plugin:install
-npm run workbuddy:launch
-```
-
-安装命令通过 WorkBuddy 内置引擎的插件 API 注册本地 marketplace，并在用户配置中持久启用本插件。请在 WorkBuddy 完全退出后运行；它不会关闭你的任务。需要移除时同样退出后运行 `npm run plugin:uninstall`。
-
-启动入口为本次进程设置本地 OTLP 地址和 Hook 诊断开关；日常入口启动时 Hook 不记录数据。持久注册解决了 5.5.3 桌面 worker 不保留开发目录变量的问题。
-
-新建一个测试任务，发送：
+在 WorkBuddy 新建一个无敏感内容的任务，例如：
 
 ```text
-请执行 pwd，然后回复 WB_LF_PHASE1_001。
+请依次分两次调用终端：先执行 printf WB_LF_FIRST，
+拿到结果后执行 sleep 30 && printf WB_LF_SECOND。
+不要读取文件或访问网络，最后回复 WB_LF_DONE。
 ```
 
-完成后，在同一个任务继续发送：
-
-```text
-请执行一个等待 3 秒的命令，然后回复 WB_LF_PHASE1_002。
+```bash
+npm run service:status
 ```
 
-等 5 秒，再执行 `npm run status`。按[第一阶段验收表](docs/phase-1.md)检查真实 `native` 数据和 `hooks` 计数。**如果只有 synthetic 或辅助 span，第一阶段仍未通过。**
+从 `sessions[].sessionId` 找到刚才的任务，在 Langfuse 的 Sessions 页面打开同一 ID。已完成的步骤会先出现，整轮结束后根 observation 才到达；Langfuse 入库本身也有延迟。本机一次真实验收中，第一工具结束约 10 秒后已可查询，第二个 30 秒工具当时仍在执行，这不是固定延迟承诺。
 
-取得测试任务的 Session ID 后，可执行 `npm run accept:phase1 -- <Session ID>`。命令按该 Session 的两条主 Trace 检查所有子 span，输出 JSON；任何一项未通过均以非零退出码结束。它不会把缺少 Session 的子 span 从验收范围中排除。
+更多操作见[接入指南](docs/getting-started.md)。首次使用仍建议先跑无敏感任务，不用真实业务正文测试。
 
-## 采集的数据范围
+## 可以看到什么
 
-- Collector 只保存结构元数据：来源、Session、span 类型、模型名、调用 ID、原始起止时间、可用的 Token 数量。已知的消息、工具内容、错误正文和资源身份字段不会写入诊断文件。
-- Hook 只保存事件名、Session、工具名和调用 ID；不读取 transcript，也不保存提示词、工具参数或返回正文。Hook 失败静默退出，不向 Agent 注入内容。
-- 第一阶段启动入口使用 `codebuddy` 语义，原生没有 usage 时按未知展示。第二阶段入口显式使用 `agentlens` 取得输入/输出 Token；该模式会在 WorkBuddy 内部生成模型正文，但本项目 Collector 在落盘和上传前仍过滤正文。两个入口均关闭四个正文开关。
-- 本地预览是诊断记录，**保留全部重复到达**。重复的 trace/span ID 会显示在 `duplicateIdentities`，不会被统计工具隐藏。状态工具读取本地 SQLite 关联结果，保留全部接收记录。第二阶段手动上传器另用持久发送账本跳过已确认发送的 ID；不依赖 Langfuse 展示去重。网络结果不确定时停止，不能保证端到端 exactly-once。
-- WorkBuddy 自带的其他遥测渠道维持其原有行为；本地端点只限定本项目的采集通道，不表示 WorkBuddy 所有网络行为都变成本地。
+| 信息 | 来源与含义 |
+|---|---|
+| Session、Trace、父子关系、起止时间 | WorkBuddy 原生 ID 和已结束 span；不另造一套重复的模型追踪 |
+| 实际模型、输入/输出/缓存 Token | 用 Session + Trace + message ID 对照任务文件；一次响应调用多个工具也只计一次用量 |
+| WorkBuddy 积分 | 原始 `rawUsage.credit`，保存为 `metadata.workbuddyCredits` |
+| 美元估算 | 可按有来源的模型价格显式配置；积分不等于美元，未知费用不填零冒充真实账单 |
+| 模型与工具正文 | 显式开启后采集；不含 system、reasoning、文件快照或完整模型历史上下文 |
+| 正在执行、等待审批、无新活动、进程退出 | `service:status` 的本地证据；不伪造未完成 span 的耗时与结果 |
+
+[字段与隐私范围](docs/data-model.md)解释缓存拆分、正文范围、费用和脱敏限制。
+
+## 怎样上报、怎样避免重复
 
 ```mermaid
 flowchart LR
-  W[WorkBuddy 原生 span] --> C[本机 Collector]
-  C --> M[类型和 Session 映射]
-  M --> F[按 Trace ID 补 Session / SQLite]
-  M --> R[转换后原始元数据 JSONL]
-  H[WorkBuddy 命令 Hook] --> E[本地 Hook 事件]
-  F --> S[npm run status]
-  F --> U[指定 Session / 发送账本]
-  U --> L[Langfuse OTLP v4]
-  E --> S
+  W[WorkBuddy 原生已结束 span] --> C[本机 Collector\n过滤正文和身份字段]
+  C --> Q[持久队列 → Session 关联 SQLite]
+  H[插件 Hook\n只写本机事件] --> S[增量上报服务]
+  T[已登记任务文件\n增量读取、投影和脱敏] --> S
+  Q --> S
+  S --> D[冻结 payload + 持久发送账本]
+  D --> L[Langfuse 项目]
+  L --> R[不确定结果按 ID + 摘要核对]
+  R --> D
 ```
 
-## 文件和端口
+不会在每次 Hook 后把整份对话全量上传。任务文件按字节游标增量读取，正式发送以 `项目 + traceId + spanId` 为身份，已确认的记录跳过，内容变化会报错隔离。Langfuse 展示去重不是本项目的可靠性基础。
 
-| 项目 | 默认位置 |
+请求可能已经入库但响应丢失时，服务先查询远端；找到相同 ID 与摘要才确认成功，查不到则保留待确认。不能承诺端到端 exactly-once。完整时序、故障边界见[架构与恢复原理](docs/architecture.md)。
+
+## 日常操作
+
+| 操作 | 命令 |
 |---|---|
-| OTLP 接收地址 | `http://127.0.0.1:14318/v1/traces` |
-| 关联结果 | `.local/collector/traces.sqlite`；用 `npm run preview:export` 导出 JSONL，不提交 Git |
-| 关联前元数据 | `.local/collector/traces.jsonl`，用于对照原始缺失字段，不提交 Git |
-| 上传凭证 | 项目 `.env`；Git 忽略，不传给 WorkBuddy |
-| 上传账本 | `.local/langfuse-deliveries.sqlite`；保留它以避免重复发送 |
-| Hook 诊断 | `~/.workbuddy/langfuse-plugin/hooks.jsonl` |
-| WorkBuddy 启动日志 | `.local/workbuddy-startup.log`，不提交 Git；可能包含服务运行信息，请勿直接分享 |
-| 插件 | `plugins/workbuddy-langfuse/` |
-| 分阶段设计 | [docs/design.md](docs/design.md) |
+| 配置与校验密钥 | `npm run configure` |
+| 安装/更新并启动完整接入 | 退出 WorkBuddy 后 `npm start` |
+| 看自动发送和运行状态 | `npm run service:status` |
+| 看底层采集诊断 | `npm run status` |
+| 停止接收和上报，保留历史 | `npm stop` |
+| 核验一个完成的 Session | `npm run langfuse:verify -- <Session ID>` |
+| 核对不确定发送 | `npm run recover` |
+| 仅卸载 Hook 插件 | 退出 WorkBuddy 后 `npm run plugin:uninstall` |
 
-如端口冲突，可在当前终端 `export WB_LF_PORT=14328`，然后停止并重启 Collector、使用同一终端重新启动 WorkBuddy。可用 `WORKBUDDY_APP_PATH` 指定应用安装目录，`WORKBUDDY_LANGFUSE_DATA_DIR` 指定 Hook 数据目录。
+更新、卸载、故障恢复和常见问题见[接入指南](docs/getting-started.md)与[排障手册](docs/troubleshooting.md)。
 
-退出 WorkBuddy 后从日常入口重新打开，即可退出本次诊断启动环境。停止接收端：
+## 学习和验证
 
-```bash
-npm run collector:stop
-```
-
-上述停止命令保留本地数据与未发送给关联器的队列，也不会操作已有的 Langfuse 服务。
-
-## 开发验证
+先看[架构](docs/architecture.md)，再看[字段映射](docs/data-model.md)，最后读 `scripts/sidecar.mjs` 中的采集和发送流程。阶段设计及历史验收保留在 [docs/design.md](docs/design.md) 和验收记录中；历史版本文档不代表当前安装方式。
 
 ```bash
 npm test
 npm run test:collector
 npm run test:plugin
+npm run test:langfuse
 ```
 
-- `test`：20 项检查覆盖 Hook 默认关闭、内容不落盘、并发写入、Session 跨批关联、重启、冲突、重复可见与验收判定，以及上传账本与远端验证。
-- `test:collector`：独立容器把模拟 JSON 转为 protobuf，再通过正式接收和转换配置；继续经过 Session 关联器，检查 ID、层级、时间、用量、缺失 Session 补齐和内容过滤。测试结束自动清理容器。
-- `test:plugin`：以临时配置启动 WorkBuddy 内置引擎，安装插件、重启引擎并验证持久启用与恰好 6 个 Hook，最后卸载；没有模型请求，不修改你的 WorkBuddy 配置。
+前三项分别检查逻辑、真实 Collector 协议链路、真实 WorkBuddy 插件引擎。`test:langfuse` 会向当前项目写入带 synthetic 标记的测试记录，并从真实 Langfuse 查询核对；它不运行模型，也不替代桌面验收。
 
-测试中的“内置引擎加载成功”与“桌面主任务 Hook 已自动触发”是两个独立检查。
-
-本机 5.5.3 内置 CLI 的 `plugin validate/install/marketplace add` 命令在本次检查中出现位置参数错位，且失败时退出码可能为 0。安装脚本改用同一内置引擎的插件 HTTP API，并检查实际安装结果；不依赖上述 CLI 退出码。
-
-Hook 文件使用 manifest 显式指定的 `hooks/events.json`。5.5.3 对默认 `hooks/hooks.json` 存在重复加载行为；改名后真实引擎测试确认每个事件只注册一次。详见[验证记录](docs/verification.md)。
+验收证据：[阶段 1 修复](docs/acceptance-2026-09-08.md)、[阶段 2A](docs/acceptance-phase2a-2026-09-08.md)、[阶段 2B](docs/acceptance-phase2b-2026-09-08.md)、[阶段 3 与完整验收](docs/acceptance-phase3-2026-09-08.md)、[完整交付清单](docs/completion-plan.md)。

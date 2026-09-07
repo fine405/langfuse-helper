@@ -1,6 +1,6 @@
 {
   "name": "workbuddy-langfuse",
-  "version": "0.2.0",
-  "description": "第一阶段：记录 WorkBuddy Hook 元数据，验证原生链路；不向 Langfuse 上传。",
+  "version": "0.4.0",
+  "description": "WorkBuddy 原生追踪、可选脱敏正文与用量补充；由本地服务增量发送到 Langfuse。",
   "hooks": "./hooks/events.json"
 }

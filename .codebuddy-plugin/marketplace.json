@@ -1,11 +1,13 @@
 {
   "name": "workbuddy-langfuse-local",
-  "owner": { "name": "Local Development" },
+  "owner": {
+    "name": "Local Development"
+  },
   "plugins": [
     {
       "name": "workbuddy-langfuse",
       "source": "./plugins/workbuddy-langfuse",
-      "description": "WorkBuddy → Langfuse integration, phase 1 local diagnostics"
+      "description": "WorkBuddy native tracing, incremental Langfuse delivery and local runtime diagnostics"
     }
   ]
 }

@@ -82,7 +82,45 @@ try {
   const rawTool = spansFrom(await readJsonLines(join(directory, 'traces.jsonl'))).find(span => span.spanId === tool.spanId);
   assert.equal(rawTool.attributes['langfuse.session.id'], undefined, 'Fixture must reproduce the actual missing-session input');
   assert.ok(!JSON.stringify((await readPreview(directory)).batches).includes('DO_NOT_CAPTURE_CONTENT'));
+  // Stop only this isolated test correlator. Accepted data must survive a Collector restart on disk.
+  docker(['stop', correlatorName]);
+  const offlinePayload = demoPayload();
+  const nestedSpans = offlinePayload.body.resourceSpans[0].scopeSpans[0].spans;
+  const subagentId = randomBytes(8).toString('hex'), nestedModelId = randomBytes(8).toString('hex');
+  const subagent = structuredClone(nestedSpans[0]);
+  subagent.spanId = subagentId; subagent.parentSpanId = offlinePayload.rootId;
+  subagent.attributes.find(item => item.key === 'span.type').value.stringValue = 'subagent';
+  subagent.attributes = subagent.attributes.filter(item => item.key !== 'conversation.id');
+  const nestedModel = structuredClone(nestedSpans[1]);
+  nestedModel.spanId = nestedModelId; nestedModel.parentSpanId = subagentId;
+  nestedModel.attributes = nestedModel.attributes.filter(item => item.key !== 'conversation.id');
+  nestedSpans.push(subagent, nestedModel);
+  const offline = await sendDemo(port, offlinePayload);
+  let persisted = false;
+  for (let i = 0; i < 30; i++) {
+    persisted = (await readJsonLines(join(directory, 'traces.jsonl'))).some(batch => spansFrom([batch]).some(span => span.traceId === offline.traceId));
+    if (persisted) break;
+    await delay(200);
+  }
+  assert.ok(persisted, 'Collector accepted and persisted the offline batch');
+  docker(['restart', name]);
+  docker(['start', correlatorName]);
+  let recovered = [];
+  for (let i = 0; i < 100; i++) {
+    recovered = spansFrom((await readPreview(directory)).batches).filter(span => span.traceId === offline.traceId);
+    if (recovered.length >= 6) break;
+    await delay(200);
+  }
+  assert.equal(recovered.length, 6, 'Durable exporter queue must recover exactly the accepted offline batch');
+  assert.ok(recovered.some(span => span.spanId === offline.rootId));
+  const childAgent = recovered.find(span => span.spanId === subagentId), childModel = recovered.find(span => span.spanId === nestedModelId);
+  assert.equal(childAgent.attributes['langfuse.observation.type'], 'agent');
+  assert.equal(childAgent.attributes['langfuse.session.id'], offline.sessionId);
+  assert.equal(childAgent.parentSpanId, offline.rootId);
+  assert.equal(childModel.parentSpanId, subagentId);
+  assert.equal(childModel.attributes['langfuse.session.id'], offline.sessionId);
   console.log('PASS: protobuf → content filtering → OTLP JSON → durable Session correlation; IDs/parents/times and single-generation usage preserved.');
+  console.log('PASS: offline correlator, Collector restart, nested subagent identity/Session hierarchy, and durable queue recovery without losing the accepted batch.');
   console.log('This is a synthetic test. Live WorkBuddy verification is still required.');
 } catch (error) {
   if (started) console.error(docker(['logs', name]));

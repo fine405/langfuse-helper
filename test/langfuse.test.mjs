@@ -88,7 +88,7 @@ test('remote verification detects duplicate observations, token inflation, conte
   assert.equal(compareObservations(expected, actual, data.sessionId).passed, true);
   const omitted = actual.map(({ usageDetails, input, output, ...rest }) => rest);
   assert.equal(compareObservations(expected, omitted, data.sessionId).checks.usage, false);
-  assert.equal(compareObservations(expected, omitted, data.sessionId).checks.contentOmitted, false);
+  assert.equal(compareObservations(expected, omitted, data.sessionId).checks.content, false);
   const unknownUsage = structuredClone(expected);
   delete unknownUsage[1].attributes['gen_ai.usage.input_tokens'];
   assert.equal(compareObservations(unknownUsage, actual, data.sessionId).checks.generationUsageAvailable, false);
@@ -99,5 +99,5 @@ test('remote verification detects duplicate observations, token inflation, conte
   const result = compareObservations(expected, actual, data.sessionId);
   assert.equal(result.checks.usage, false);
   assert.equal(result.checks.sessions, false);
-  assert.equal(result.checks.contentOmitted, false);
+  assert.equal(result.checks.content, false);
 });

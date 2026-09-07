@@ -3,6 +3,7 @@ import { randomBytes } from 'node:crypto';
 import { createServer } from 'node:net';
 import { join, dirname } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
+import { readFile } from 'node:fs/promises';
 
 // A temporary authenticated control process; no model requests or credential extraction.
 export async function withEngine({ app, configDir, cwd }, action) {
@@ -18,6 +19,8 @@ export async function withEngine({ app, configDir, cwd }, action) {
     PATH: `${dirname(process.execPath)}:${process.env.PATH || ''}` };
   delete env.CODEBUDDY_PLUGIN_DIRS;
   delete env.WORKBUDDY_LANGFUSE_ENABLED;
+  delete env.LANGFUSE_PUBLIC_KEY;
+  delete env.LANGFUSE_SECRET_KEY;
   const child = spawn(join(app, 'Contents/MacOS/Electron'), [
     join(app, 'Contents/Resources/app.asar/cli/dist/codebuddy.js'),
     '--serve', '--host', '127.0.0.1', '--port', String(port),
@@ -57,8 +60,25 @@ export async function installPlugin(request, root) {
   const validation = await request('/plugins/validate', { path: join(root, 'plugins/workbuddy-langfuse') });
   if (!validation.valid) throw new Error('Plugin manifest validation failed');
   await request('/plugins/marketplaces', { source: root, autoUpdate: false });
-  await request('/plugins', { plugin: pluginId, options: { scope: 'user', waitForApply: true } });
-  const plugin = (await request('/plugins')).find(item => `${item.name}@${item.marketplace}` === pluginId);
+  await request('/plugins/marketplaces/update', { marketplace: 'workbuddy-langfuse-local', force: true });
+  const existing = (await request('/plugins')).some(item => `${item.name}@${item.marketplace}` === pluginId);
+  if (existing) await request('/plugins/update', { plugin: pluginId, scope: 'user', waitForApply: true });
+  else await request('/plugins', { plugin: pluginId, options: { scope: 'user', waitForApply: true } });
+  let plugin = (await request('/plugins')).find(item => `${item.name}@${item.marketplace}` === pluginId);
   if (plugin?.status !== 'enabled' || !plugin.installedPath) throw new Error('Plugin installation was not verified');
+  const desired = JSON.parse(await readFile(join(root, 'plugins/workbuddy-langfuse/.codebuddy-plugin/plugin.json'), 'utf8'));
+  const actual = JSON.parse(await readFile(join(plugin.installedPath, '.codebuddy-plugin/plugin.json'), 'utf8'));
+  if (actual.version !== desired.version) {
+    // WorkBuddy update can decline a downgrade. Reinstall only this plugin to select a rollback version.
+    await request('/plugins/uninstall', { plugin: pluginId });
+    await request('/plugins', { plugin: pluginId, options: { scope: 'user', waitForApply: true } });
+    plugin = (await request('/plugins')).find(item => `${item.name}@${item.marketplace}` === pluginId);
+    if (plugin?.status !== 'enabled' || !plugin.installedPath) throw new Error('Plugin rollback installation was not verified');
+  }
+  for (const path of ['.codebuddy-plugin/plugin.json', 'hooks/events.json', 'scripts/hook.mjs']) {
+    const expected = await readFile(join(root, 'plugins/workbuddy-langfuse', path));
+    const installed = await readFile(join(plugin.installedPath, path));
+    if (!expected.equals(installed)) throw new Error(`Installed plugin is stale: ${path}`);
+  }
   return plugin;
 }

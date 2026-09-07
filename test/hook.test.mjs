@@ -29,11 +29,13 @@ test('hook captures identity without conversation content and remains silent', a
       tool_input: { command: 'SECRET' }, tool_response: 'SECRET' };
     assert.deepEqual(await run(JSON.stringify(input), dir), { code: 0, stdout: '', stderr: '' });
     const content = await readFile(join(dir, 'hooks.jsonl'), 'utf8');
-    assert.ok(!content.includes('SECRET') && !content.includes('/private'));
+    assert.ok(!content.includes('SECRET'));
     const event = JSON.parse(content);
     assert.equal(event.session_id, 'session-1');
     assert.equal(event.tool_use_id, 'call-1');
     assert.equal(event.transcriptAvailable, true);
+    assert.equal(event.transcript_path, input.transcript_path);
+    assert.equal(event.contentMode, 'metadata');
     assert.equal(event.source, 'synthetic');
     assert.equal((await stat(join(dir, 'hooks.jsonl'))).mode & 0o777, 0o600);
   } finally { await rm(dir, { recursive: true, force: true }); }

@@ -1,21 +1,22 @@
+import { isMain } from './entry.mjs';
 import { DatabaseSync } from 'node:sqlite';
 import { createHash } from 'node:crypto';
 import { resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { readPreview } from './preview.mjs';
 import { attributes, spansFrom, summarize } from './data.mjs';
 import { prepare, root } from './cli.mjs';
+import { enrichSession } from './session-input.mjs';
 
 const spanOf = batch => batch.resourceSpans[0].scopeSpans[0].spans[0];
 const identity = span => `${span.traceId}:${span.spanId}`;
 const hash = value => createHash('sha256').update(value).digest('hex');
 
-export function selectSession(batches, sessionId) {
+export function selectSession(batches, sessionId, { allowIncomplete = false } = {}) {
   const spans = spansFrom(batches);
-  const traceIds = new Set(spans.filter(span => span.attributes['span.type'] === 'interaction'
+  const traceIds = new Set(spans.filter(span => (allowIncomplete ? !!span.attributes['span.type'] : span.attributes['span.type'] === 'interaction')
     && span.attributes['langfuse.session.id'] === sessionId
     && span.attributes['workbuddy.langfuse.source'] !== 'synthetic').map(span => span.traceId));
-  if (!traceIds.size) throw new Error('指定 Session 没有已完成的原生 interaction。');
+  if (!traceIds.size) throw new Error('指定 Session 没有可发送的已完成原生 span。');
   const selected = new Map();
   for (const batch of batches) {
     for (const resource of batch.resourceSpans || []) for (const scope of resource.scopeSpans || []) for (const span of scope.spans || []) {
@@ -44,7 +45,7 @@ export function selectSession(batches, sessionId) {
   }
   for (const { payload } of selected.values()) {
     const span = spanOf(payload);
-    if (span.parentSpanId && !/^0+$/.test(span.parentSpanId) && !selected.has(`${span.traceId}:${span.parentSpanId}`)) throw new Error('父 span 尚未收到，停止上传。');
+    if (!allowIncomplete && span.parentSpanId && !/^0+$/.test(span.parentSpanId) && !selected.has(`${span.traceId}:${span.parentSpanId}`)) throw new Error('父 span 尚未收到，停止上传。');
   }
   return [...selected.values()];
 }
@@ -56,6 +57,9 @@ export class DeliveryLedger {
     this.db.exec(`PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA busy_timeout=5000;
       CREATE TABLE IF NOT EXISTS deliveries (target TEXT, identity TEXT, digest TEXT, status TEXT,
         PRIMARY KEY(target, identity));`);
+    const columns = new Set(this.db.prepare('PRAGMA table_info(deliveries)').all().map(row => row.name));
+    if (!columns.has('payload')) this.db.exec('ALTER TABLE deliveries ADD COLUMN payload TEXT');
+    if (!columns.has('updated_at')) this.db.exec('ALTER TABLE deliveries ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0');
   }
   pending(records) {
     return records.filter(record => {
@@ -70,8 +74,9 @@ export class DeliveryLedger {
     this.db.exec('BEGIN IMMEDIATE');
     try {
       const pending = this.pending(records);
-      for (const record of pending) this.db.prepare(`INSERT INTO deliveries VALUES (?, ?, ?, 'sending')
-        ON CONFLICT(target, identity) DO UPDATE SET status = 'sending'`).run(this.target, record.key, record.digest);
+      for (const record of pending) this.db.prepare(`INSERT INTO deliveries(target, identity, digest, status, payload, updated_at) VALUES (?, ?, ?, 'sending', ?, ?)
+        ON CONFLICT(target, identity) DO UPDATE SET status = 'sending', payload = excluded.payload, updated_at = excluded.updated_at`)
+        .run(this.target, record.key, record.digest, JSON.stringify(record.payload), Date.now());
       this.db.exec('COMMIT');
       return pending;
     } catch (error) { this.db.exec('ROLLBACK'); throw error; }
@@ -79,11 +84,16 @@ export class DeliveryLedger {
   finish(records, status) {
     this.db.exec('BEGIN IMMEDIATE');
     try {
-      for (const record of records) this.db.prepare('UPDATE deliveries SET status = ? WHERE target = ? AND identity = ?')
-        .run(status, this.target, record.key);
+      for (const record of records) this.db.prepare('UPDATE deliveries SET status = ?, updated_at = ? WHERE target = ? AND identity = ?')
+        .run(status, Date.now(), this.target, record.key);
       this.db.exec('COMMIT');
     } catch (error) { this.db.exec('ROLLBACK'); throw error; }
   }
+  uncertain() {
+    return this.db.prepare("SELECT * FROM deliveries WHERE target = ? AND status IN ('sending', 'uncertain')").all(this.target);
+  }
+  status(key) { return this.db.prepare('SELECT status, digest FROM deliveries WHERE target = ? AND identity = ?').get(this.target, key); }
+  counts() { return Object.fromEntries(this.db.prepare('SELECT status, count(*) AS count FROM deliveries WHERE target = ? GROUP BY status').all(this.target).map(row => [row.status, row.count])); }
   close() { this.db.close(); }
 }
 
@@ -95,10 +105,19 @@ export async function sendRecords(records, ledger, request) {
   const reserved = ledger.reserve(pending);
   if (!reserved.length) return 0;
   // Rebuild after the transactional reservation in case a concurrent uploader finished first.
-  const reservedBody = JSON.stringify({ resourceSpans: reserved.flatMap(record => record.payload.resourceSpans) });
+  const reservedBody = JSON.stringify({ resourceSpans: reserved.flatMap(record => {
+    const payload = structuredClone(record.payload);
+    spanOf(payload).attributes.push({ key: 'langfuse.observation.metadata.deliveryDigest', value: { stringValue: record.digest } });
+    return payload.resourceSpans;
+  }) });
   let response;
   try { response = await request(reservedBody); }
-  catch { ledger.finish(reserved, 'uncertain'); throw new Error('网络响应不确定；已阻止自动重传，请先核查远端。'); }
+  catch (error) {
+    // A refused connection/DNS failure occurs before sending any HTTP body; other failures are ambiguous.
+    const unsent = ['ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN'].includes(error.cause?.code || error.code);
+    ledger.finish(reserved, unsent ? 'rejected' : 'uncertain');
+    throw new Error(unsent ? '连接未建立；记录保留，稍后重试。' : '网络响应不确定；已阻止自动重传，请先核查远端。');
+  }
   if (!response.ok) {
     ledger.finish(reserved, [400, 401, 403, 404, 413, 415].includes(response.status) ? 'rejected' : 'uncertain');
     throw new Error(`Langfuse 返回 HTTP ${response.status}；发送状态已保留。`);
@@ -129,7 +148,7 @@ async function main() {
   const [sessionId, option] = process.argv.slice(2);
   if (!sessionId || (option && option !== '--send')) throw new Error('用法：npm run langfuse:upload -- <Session ID> [--send]');
   const preview = await readPreview(resolve(root, '.local/collector'));
-  const records = selectSession(preview.batches, sessionId);
+  const records = await enrichSession(selectSession(preview.batches, sessionId), sessionId);
   const summary = summarize(spansFrom(records.map(record => record.payload)));
   if (!option) { console.log(JSON.stringify({ mode: 'preview', sessionId, ...summary, note: '本次未连接或上传 Langfuse；加 --send 才发送。仅选择已结束的主 Trace。' }, null, 2)); return; }
   const { base, request } = langfuseConfig();
@@ -149,4 +168,4 @@ async function main() {
   } finally { ledger.close(); }
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main().catch(error => { console.error(error.message); process.exitCode = 1; });
+if (isMain(import.meta.url)) main().catch(error => { console.error(error.message); process.exitCode = 1; });

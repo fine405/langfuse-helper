@@ -1,3 +1,5 @@
+> 历史阶段记录。当前完整接入请使用 [接入指南](getting-started.md)；后续功能与最终结果见 [完整验收](acceptance-phase3-2026-09-08.md)。
+
 # 验证记录
 
 环境：WorkBuddy 5.5.3、Node.js 24.20.0、Docker Desktop。Collector Contrib 0.160.0 与 Node 24.20.0 Alpine 镜像均固定 digest。

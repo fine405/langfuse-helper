@@ -1,3 +1,5 @@
+> 历史阶段记录。当前完整接入请使用 [接入指南](getting-started.md)；后续功能与最终结果见 [完整验收](acceptance-phase3-2026-09-08.md)。
+
 # 第一阶段验收
 
 目标：确认真实 WorkBuddy 桌面任务的原生埋点覆盖与 Hook 加载，不向 Langfuse 写数据。
