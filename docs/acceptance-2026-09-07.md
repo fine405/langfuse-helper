@@ -1,5 +1,7 @@
 # 第一阶段真实桌面验收：未通过
 
+这是 0.1.0 的历史失败记录；修复后的通过结果见 [2026-09-08 验收](acceptance-2026-09-08.md)。
+
 日期：2026-09-07，Asia/Shanghai。环境：本机 WorkBuddy 5.5.3；本地阶段 1 Collector。未启用 Langfuse exporter，未修改 WorkBuddy settings.json。
 
 先确认引擎没有运行中的会话，再退出旧 WorkBuddy、使用项目诊断入口启动。在桌面端新建“WorkBuddy Langfuse 插件无敏感验收测试”，同一任务依次请求执行 `pwd`、`sleep 3`，分别收到 `WB_LF_PHASE1_001`、`WB_LF_PHASE1_002`。该测试任务的 JSONL 确认确实执行了两次 Bash 调用及其返回。

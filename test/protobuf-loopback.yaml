@@ -5,7 +5,7 @@ receivers:
       http:
         endpoint: 0.0.0.0:4319
 exporters:
-  otlphttp/probe:
+  otlp_http/probe:
     endpoint: http://127.0.0.1:4318
     retry_on_failure:
       enabled: false
@@ -13,4 +13,4 @@ service:
   pipelines:
     traces/probe:
       receivers: [otlp/probe]
-      exporters: [otlphttp/probe]
+      exporters: [otlp_http/probe]

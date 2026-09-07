@@ -1,20 +1,20 @@
 # WorkBuddy Langfuse Plugin
 
-当前版本 **0.1.0 / 第一阶段：本地诊断**。这版用于确认 WorkBuddy 主任务能否产生完整、可关联的原生追踪，为后续 Langfuse 上报准备可靠数据。
+当前版本 **0.1.1 / 第一阶段：本地诊断**。这版用于确认 WorkBuddy 主任务能否产生完整、可关联的原生追踪，为后续 Langfuse 上报准备可靠数据。
 
-**真实桌面验收未通过（2026-09-07）**：两轮主任务的模型和工具链路已收到，但 6 个子 span 缺少 Session，插件开发目录未被实际 worker 保留，Hook 零触发。阶段 2 暂未启动。详见[验收结果](docs/acceptance-2026-09-07.md)。以下启动步骤目前用于复现和排障，不能作为已接入成功的安装流程。
+**真实桌面验收通过（2026-09-08）**：已修复桌面插件加载和子 span Session 缺失。两轮主任务共 18 个 spans，Session 缺失与重复均为 0，四类核心 Hook 各触发两次。详见[修复验收](docs/acceptance-2026-09-08.md)。
 
 已实现：命令型 Hook 诊断插件、标准 OTLP Collector、Langfuse 类型与 Session 字段转换、模拟链路测试、真实数据统计。**本阶段没有 Langfuse exporter，不需要填写密钥，不会回灌历史会话。**
 
 | 阶段 | 交付 | 状态 |
 |---|---|---|
-| 1 | 原生链路接收、字段映射、Hook 诊断、可重复运行的验证 | 桌面验收未通过：插件加载与子 span Session 待修复 |
+| 1 | 原生链路接收、字段映射、Hook 诊断、可重复运行的验证 | 桌面验收通过（0.1.1） |
 | 2 | Langfuse 上报、内容选择与用量校验、两轮会话验收 | 阶段 1 验证后实现 |
 | 3 | 运行中状态、按步骤增量采集、去重与恢复 | 阶段 2 验证后实现 |
 
 ## 开始验证
 
-需要 macOS、WorkBuddy、Node.js 22+ 和已启动的 Docker Desktop。无需安装 npm 依赖。
+需要 macOS、WorkBuddy、Node.js 24+ 和已启动的 Docker Desktop。无需安装 npm 依赖。
 
 ```bash
 cd /Users/boqingyun/workspace/ai/workbuddy-langfuse-plugin
@@ -23,7 +23,7 @@ npm run collector:start
 npm run demo
 ```
 
-首次启动需要下载固定版本的 Collector。等 2 秒后运行：
+首次启动需要下载固定版本的 Collector 和 Node 镜像。等 2 秒后运行：
 
 ```bash
 npm run status
@@ -34,12 +34,13 @@ npm run status
 然后完全退出 WorkBuddy，通过下面的入口重新打开：
 
 ```bash
+npm run plugin:install
 npm run workbuddy:launch
 ```
 
-这个入口仅为本次 WorkBuddy 进程设置本地 OTLP 地址和插件开发目录，不修改 `settings.json`。已有 WorkBuddy 未退出时，命令会停止，不会关闭你的任务。
+安装命令通过 WorkBuddy 内置引擎的插件 API 注册本地 marketplace，并在用户配置中持久启用本插件。请在 WorkBuddy 完全退出后运行；它不会关闭你的任务。需要移除时同样退出后运行 `npm run plugin:uninstall`。
 
-已知限制：本机 5.5.3 的实际桌面 worker 未保留 `CODEBUDDY_PLUGIN_DIRS`，所以该开发目录方式只在独立引擎测试中通过，尚不能让桌面主任务自动触发本插件 Hook。
+启动入口为本次进程设置本地 OTLP 地址和 Hook 诊断开关；日常入口启动时 Hook 不记录数据。持久注册解决了 5.5.3 桌面 worker 不保留开发目录变量的问题。
 
 新建一个测试任务，发送：
 
@@ -62,14 +63,15 @@ npm run workbuddy:launch
 - Collector 只保存结构元数据：来源、Session、span 类型、模型名、调用 ID、原始起止时间、可用的 Token 数量。已知的消息、工具内容、错误正文和资源身份字段不会写入诊断文件。
 - Hook 只保存事件名、Session、工具名和调用 ID；不读取 transcript，也不保存提示词、工具参数或返回正文。Hook 失败静默退出，不向 Agent 注入内容。
 - 启动入口使用 WorkBuddy 默认的 `codebuddy` 语义，关闭正文开关。没有开启会自动带出模型输入输出的 `agentlens` 模式。原生没有 usage 时按未知展示，阶段 2 再核验其采集路径。
-- 这是诊断记录，**没有实现去重上报**。重复的 trace/span ID 会显示在 `duplicateIdentities`，不会被统计工具隐藏。状态工具当前全量读取诊断文件，不是增量上传器。
+- 这是诊断记录，**没有实现去重上报**。重复的 trace/span ID 会显示在 `duplicateIdentities`，不会被统计工具隐藏。状态工具读取本地 SQLite 关联结果，保留全部接收记录，不是增量上传器。
 - WorkBuddy 自带的其他遥测渠道维持其原有行为；本地端点只限定本项目的采集通道，不表示 WorkBuddy 所有网络行为都变成本地。
 
 ```mermaid
 flowchart LR
   W[WorkBuddy 原生 span] --> C[本机 Collector]
   C --> M[类型和 Session 映射]
-  M --> F[本地元数据预览]
+  M --> F[按 Trace ID 补 Session / SQLite]
+  M --> R[转换后原始元数据 JSONL]
   H[WorkBuddy 命令 Hook] --> E[本地 Hook 事件]
   F --> S[npm run status]
   E --> S
@@ -80,7 +82,8 @@ flowchart LR
 | 项目 | 默认位置 |
 |---|---|
 | OTLP 接收地址 | `http://127.0.0.1:14318/v1/traces` |
-| 诊断链路 | `.local/collector/traces.jsonl`，不提交 Git |
+| 关联结果 | `.local/collector/traces.sqlite`；用 `npm run preview:export` 导出 JSONL，不提交 Git |
+| 关联前元数据 | `.local/collector/traces.jsonl`，用于对照原始缺失字段，不提交 Git |
 | Hook 诊断 | `~/.workbuddy/langfuse-plugin/hooks.jsonl` |
 | WorkBuddy 启动日志 | `.local/workbuddy-startup.log`，不提交 Git；可能包含服务运行信息，请勿直接分享 |
 | 插件 | `plugins/workbuddy-langfuse/` |
@@ -94,7 +97,7 @@ flowchart LR
 npm run collector:stop
 ```
 
-上述停止命令保留诊断文件，也不会操作已有的 Langfuse 服务。
+上述停止命令保留本地数据与未发送给关联器的队列，也不会操作已有的 Langfuse 服务。
 
 ## 开发验证
 
@@ -104,12 +107,12 @@ npm run test:collector
 npm run test:plugin
 ```
 
-- `test`：检查 Hook 不阻塞、内容不落盘、并发写入及诊断统计。
-- `test:collector`：独立容器把模拟 JSON 转为 protobuf，再通过正式接收和转换配置；检查 ID、层级、时间、用量和内容过滤。测试结束自动清理容器。
-- `test:plugin`：以临时配置启动 WorkBuddy 内置引擎，验证开发目录插件被发现、启用、manifest 有效，且运行时恰好加载 6 个 Hook；没有模型请求，不修改你的 WorkBuddy 配置。
+- `test`：16 项检查覆盖 Hook 默认关闭、内容不落盘、并发写入、Session 跨批关联、重启、冲突、重复可见与验收判定。
+- `test:collector`：独立容器把模拟 JSON 转为 protobuf，再通过正式接收和转换配置；继续经过 Session 关联器，检查 ID、层级、时间、用量、缺失 Session 补齐和内容过滤。测试结束自动清理容器。
+- `test:plugin`：以临时配置启动 WorkBuddy 内置引擎，安装插件、重启引擎并验证持久启用与恰好 6 个 Hook，最后卸载；没有模型请求，不修改你的 WorkBuddy 配置。
 
 测试中的“内置引擎加载成功”与“桌面主任务 Hook 已自动触发”是两个独立检查。
 
-本机 5.5.3 内置 CLI 的 `plugin validate/install/marketplace add` 命令在本次检查中出现位置参数错位，且失败时退出码可能为 0。因此本阶段使用引擎支持的 `CODEBUDDY_PLUGIN_DIRS` 开发目录加载，未提供可能误报成功的安装脚本。正式市场安装流程将在后续阶段验证。
+本机 5.5.3 内置 CLI 的 `plugin validate/install/marketplace add` 命令在本次检查中出现位置参数错位，且失败时退出码可能为 0。安装脚本改用同一内置引擎的插件 HTTP API，并检查实际安装结果；不依赖上述 CLI 退出码。
 
 Hook 文件使用 manifest 显式指定的 `hooks/events.json`。5.5.3 对默认 `hooks/hooks.json` 存在重复加载行为；改名后真实引擎测试确认每个事件只注册一次。详见[验证记录](docs/verification.md)。

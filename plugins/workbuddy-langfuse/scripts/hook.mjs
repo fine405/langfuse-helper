@@ -3,6 +3,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 
 // Diagnostic events only. No transcript reads, model/tool content, or networking.
+if (process.env.WORKBUDDY_LANGFUSE_ENABLED !== '1' && process.env.WORKBUDDY_LANGFUSE_TEST !== '1') process.exit(0);
 try {
   let size = 0;
   const chunks = [];

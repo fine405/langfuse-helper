@@ -7,10 +7,10 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const script = fileURLToPath(new URL('../plugins/workbuddy-langfuse/scripts/hook.mjs', import.meta.url));
-function run(input, directory) {
+function run(input, directory, overrides = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [script], { env: { ...process.env,
-      WORKBUDDY_LANGFUSE_DATA_DIR: directory, WORKBUDDY_LANGFUSE_TEST: '1' } });
+      WORKBUDDY_LANGFUSE_DATA_DIR: directory, WORKBUDDY_LANGFUSE_TEST: '1', ...overrides } });
     let stdout = '', stderr = '';
     child.stdout.on('data', chunk => stdout += chunk);
     child.stderr.on('data', chunk => stderr += chunk);
@@ -36,6 +36,15 @@ test('hook captures identity without conversation content and remains silent', a
     assert.equal(event.transcriptAvailable, true);
     assert.equal(event.source, 'synthetic');
     assert.equal((await stat(join(dir, 'hooks.jsonl'))).mode & 0o777, 0o600);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('a persistently installed hook stays inactive outside the diagnostic launch', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'wb-lf-disabled-'));
+  try {
+    assert.deepEqual(await run('{"session_id":"s","hook_event_name":"Stop"}', dir,
+      { WORKBUDDY_LANGFUSE_TEST: '0', WORKBUDDY_LANGFUSE_ENABLED: '0' }), { code: 0, stdout: '', stderr: '' });
+    await assert.rejects(readFile(join(dir, 'hooks.jsonl')), { code: 'ENOENT' });
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 

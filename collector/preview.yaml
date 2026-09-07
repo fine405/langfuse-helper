@@ -1,4 +1,10 @@
-# Phase 1 only: no network exporter, API keys, or Langfuse writes.
+# Phase 1 only: sanitized metadata goes to a private local correlator, never Langfuse.
+extensions:
+  file_storage/correlator:
+    directory: /data/export-queue
+    create_directory: true
+    fsync: true
+
 receivers:
   otlp:
     protocols:
@@ -20,15 +26,15 @@ processors:
           - set(attributes["langfuse.observation.type"], "agent") where attributes["span.type"] == "interaction" or attributes["span.type"] == "subagent"
           - set(attributes["langfuse.observation.type"], "tool") where attributes["span.type"] == "tool" or attributes["span.type"] == "mcp_call"
           - set(attributes["langfuse.observation.type"], "generation") where attributes["span.type"] == "model_stream"
-          - set(attributes["langfuse.session.id"], attributes["conversation.id"])
+          - set(attributes["langfuse.session.id"], attributes["conversation.id"]) where attributes["conversation.id"] != nil
           - set(attributes["langfuse.session.id"], attributes["workbuddy.session.id"]) where attributes["workbuddy.session.id"] != nil
           - set(attributes["langfuse.session.id"], attributes["workbuddy.session_id"]) where attributes["workbuddy.session_id"] != nil
           - set(attributes["langfuse.session.id"], attributes["gen_ai.session.id"]) where attributes["gen_ai.session.id"] != nil
-          - set(attributes["langfuse.observation.model.name"], attributes["model.id"]) where attributes["span.type"] == "model_stream"
-          - set(attributes["langfuse.observation.model.name"], attributes["workbuddy.model"]) where attributes["span.type"] == "model_stream" and attributes["langfuse.observation.model.name"] == nil
+          - set(attributes["langfuse.observation.model.name"], attributes["model.id"]) where attributes["span.type"] == "model_stream" and attributes["model.id"] != nil
+          - set(attributes["langfuse.observation.model.name"], attributes["workbuddy.model"]) where attributes["span.type"] == "model_stream" and attributes["workbuddy.model"] != nil and attributes["langfuse.observation.model.name"] == nil
           - set(attributes["langfuse.observation.model.name"], attributes["gen_ai.request.model"]) where attributes["span.type"] == "model_stream" and attributes["gen_ai.request.model"] != nil
-          - set(attributes["gen_ai.usage.input_tokens"], attributes["llm.usage.prompt_tokens"]) where attributes["span.type"] == "model_stream" and attributes["gen_ai.usage.input_tokens"] == nil
-          - set(attributes["gen_ai.usage.output_tokens"], attributes["llm.usage.completion_tokens"]) where attributes["span.type"] == "model_stream" and attributes["gen_ai.usage.output_tokens"] == nil
+          - set(attributes["gen_ai.usage.input_tokens"], attributes["llm.usage.prompt_tokens"]) where attributes["span.type"] == "model_stream" and attributes["llm.usage.prompt_tokens"] != nil and attributes["gen_ai.usage.input_tokens"] == nil
+          - set(attributes["gen_ai.usage.output_tokens"], attributes["llm.usage.completion_tokens"]) where attributes["span.type"] == "model_stream" and attributes["llm.usage.completion_tokens"] != nil and attributes["gen_ai.usage.output_tokens"] == nil
           - delete_matching_keys(attributes, "^gen_ai\\.usage\\.") where attributes["span.type"] != "model_stream"
           - set(attributes["workbuddy.langfuse.source"], "native-preview") where attributes["workbuddy.langfuse.source"] == nil
           # Keep model_request as a diagnostic span, never as a billable generation.
@@ -56,8 +62,21 @@ exporters:
     format: json
     append: true
     flush_interval: 500ms
+  otlp_http/correlator:
+    endpoint: http://correlator:4319
+    encoding: json
+    compression: none
+    retry_on_failure:
+      enabled: true
+      initial_interval: 1s
+      max_interval: 10s
+      max_elapsed_time: 0s
+    sending_queue:
+      storage: file_storage/correlator
+      queue_size: 1000
 
 service:
+  extensions: [file_storage/correlator]
   telemetry:
     logs:
       level: warn
@@ -65,4 +84,4 @@ service:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, transform/workbuddy, batch]
-      exporters: [file/preview]
+      exporters: [file/preview, otlp_http/correlator]

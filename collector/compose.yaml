@@ -1,9 +1,25 @@
 name: workbuddy-langfuse-preview
 services:
+  correlator:
+    image: node:24.20.0-alpine@sha256:e67514e5d0f6c46656005e1b693b2ec9d52e80b641307de684d4a015ba7a4eaf
+    user: "${WB_LF_UID:-1000}:${WB_LF_GID:-1000}"
+    command: ["node", "/app/correlator.mjs"]
+    volumes:
+      - ./:/app:ro
+      - ../.local/collector:/data
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4319/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 2s
+      timeout: 2s
+      retries: 10
+    restart: "no"
   collector:
     image: otel/opentelemetry-collector-contrib:0.160.0@sha256:799dc6cf12c96192af37b5bdba804da8c10b3bc563b43cb90c3f3c58d9572ad6
     user: "${WB_LF_UID:-1000}:${WB_LF_GID:-1000}"
     command: ["--config=/etc/collector.yaml"]
+    depends_on:
+      correlator:
+        condition: service_healthy
     ports:
       - "127.0.0.1:${WB_LF_PORT:-14318}:4318"
     volumes:
