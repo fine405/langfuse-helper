@@ -1,0 +1,18 @@
+{
+  "name": "workbuddy-langfuse-plugin",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "doctor": "node scripts/cli.mjs doctor",
+    "collector:start": "node scripts/cli.mjs collector:start",
+    "collector:stop": "node scripts/cli.mjs collector:stop",
+    "demo": "node scripts/cli.mjs demo",
+    "status": "node scripts/cli.mjs status",
+    "workbuddy:launch": "node scripts/cli.mjs launch",
+    "test": "node --test test/*.test.mjs",
+    "test:collector": "node scripts/test-collector.mjs",
+    "test:plugin": "node scripts/test-plugin.mjs"
+  }
+}

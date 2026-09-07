@@ -1,0 +1,10 @@
+{
+  "hooks": {
+    "SessionStart": [{ "hooks": [{ "type": "command", "command": "node \"${CODEBUDDY_PLUGIN_ROOT}/scripts/hook.mjs\"", "timeout": 3 }] }],
+    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "node \"${CODEBUDDY_PLUGIN_ROOT}/scripts/hook.mjs\"", "timeout": 3 }] }],
+    "PreToolUse": [{ "matcher": ".*", "hooks": [{ "type": "command", "command": "node \"${CODEBUDDY_PLUGIN_ROOT}/scripts/hook.mjs\"", "timeout": 3 }] }],
+    "PostToolUse": [{ "matcher": ".*", "hooks": [{ "type": "command", "command": "node \"${CODEBUDDY_PLUGIN_ROOT}/scripts/hook.mjs\"", "timeout": 3 }] }],
+    "Stop": [{ "hooks": [{ "type": "command", "command": "node \"${CODEBUDDY_PLUGIN_ROOT}/scripts/hook.mjs\"", "timeout": 3 }] }],
+    "SessionEnd": [{ "hooks": [{ "type": "command", "command": "node \"${CODEBUDDY_PLUGIN_ROOT}/scripts/hook.mjs\"", "timeout": 3 }] }]
+  }
+}

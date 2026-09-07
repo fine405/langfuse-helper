@@ -1,0 +1,16 @@
+# Test-only pipeline: JSON test input -> standard OTLP protobuf exporter -> real receiver.
+receivers:
+  otlp/probe:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4319
+exporters:
+  otlphttp/probe:
+    endpoint: http://127.0.0.1:4318
+    retry_on_failure:
+      enabled: false
+service:
+  pipelines:
+    traces/probe:
+      receivers: [otlp/probe]
+      exporters: [otlphttp/probe]

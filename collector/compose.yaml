@@ -1,0 +1,12 @@
+name: workbuddy-langfuse-preview
+services:
+  collector:
+    image: otel/opentelemetry-collector-contrib:0.160.0@sha256:799dc6cf12c96192af37b5bdba804da8c10b3bc563b43cb90c3f3c58d9572ad6
+    user: "${WB_LF_UID:-1000}:${WB_LF_GID:-1000}"
+    command: ["--config=/etc/collector.yaml"]
+    ports:
+      - "127.0.0.1:${WB_LF_PORT:-14318}:4318"
+    volumes:
+      - ./preview.yaml:/etc/collector.yaml:ro
+      - ../.local/collector:/data
+    restart: "no"
