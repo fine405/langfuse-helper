@@ -21,6 +21,8 @@ export async function withEngine({ app, configDir, cwd }, action) {
   delete env.WORKBUDDY_LANGFUSE_ENABLED;
   delete env.LANGFUSE_PUBLIC_KEY;
   delete env.LANGFUSE_SECRET_KEY;
+  delete env.WORKBUDDY_LANGFUSE_PUBLIC_KEY;
+  delete env.WORKBUDDY_LANGFUSE_SECRET_KEY;
   const child = spawn(join(app, 'Contents/MacOS/Electron'), [
     join(app, 'Contents/Resources/app.asar/cli/dist/codebuddy.js'),
     '--serve', '--host', '127.0.0.1', '--port', String(port),

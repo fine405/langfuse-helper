@@ -1,69 +1,74 @@
-# 接入、更新和卸载
+# 安装、配置与日常使用
 
-## 环境与准备
+## 环境准备
 
-适配目标是 macOS 上的 WorkBuddy 5.5.3。需要 Node.js 24+、能正常启动的 Docker Desktop，以及可访问的 Langfuse 项目。其他 WorkBuddy 版本应先运行插件测试和无敏感任务，原生事件或任务文件结构改变时可能暂停补充数据。
+当前支持 macOS、WorkBuddy 5.5.3、Node.js 24+、Docker Desktop，以及可访问的 Langfuse 项目。插件不安装或修改 Langfuse 服务。其他 WorkBuddy 版本的原生事件或任务文件结构可能不同。
 
-仓库没有第三方 npm 依赖，不需要 `npm install`。首次启动 Docker 会下载固定版本的 OpenTelemetry Collector 与 Node 镜像。仓库若保持私有，学习或安装的同事需要 GitHub 仓库访问权限。
+安装 [Node.js](https://nodejs.org/) 和 [Docker Desktop](https://www.docker.com/products/docker-desktop/) 后，完成各自的首次启动提示。插件没有第三方 npm 依赖。
 
-```bash
-git clone https://github.com/fine405/workbuddy-langfuse-plugin.git
-cd workbuddy-langfuse-plugin
-npm run doctor
-npm run configure
-```
+## 安装到用户目录
 
-配置向导先验证 Langfuse 项目认证，再保存到 `.env`，文件权限为仅当前用户读写。请使用项目密钥，不是登录密码。Public Key、Secret Key 不传给 WorkBuddy，只由本地上报进程使用。
+获取维护者提供的 `workbuddy-langfuse-0.5.0-macos.zip` 并解压，完全退出 WorkBuddy，双击 **安装.command**。安装器会把程序放到固定的用户目录，然后打开 `~/Applications/WorkBuddy Langfuse/`。安装完成后可以删除下载的 ZIP 和解压目录。
 
-没有交互终端时，可在仓库根目录手工创建 `.env`：
+如果 macOS 阻止打开下载的脚本，请先核实安装包来源，再按系统提示在“隐私与安全性”中允许打开。安装器不自动绕过系统安全设置，不要求管理员权限。
 
-```dotenv
-LANGFUSE_BASE_URL=http://localhost:3000
-LANGFUSE_PUBLIC_KEY=pk-lf-替换为项目PublicKey
-LANGFUSE_SECRET_KEY=sk-lf-替换为项目SecretKey
-```
+安装包按版本分发；项目仓库保持私有时，GitHub 发布页也需要相应访问权限。可以直接使用维护者提供的安装包。
 
-将文件权限设为仅自己可读写：`chmod 600 .env`。Cloud 用户填写自己项目所属区域的 Langfuse 基础地址，不追加 `/api` 或项目页面路径。
+## 首次配置
 
-## 第一次启动
+双击 **配置 Langfuse.command**，按照向导操作：
 
-1. 完全退出 WorkBuddy。关闭窗口可能仍有后台进程，请使用应用菜单的退出。
-2. 启动 Docker Desktop。
-3. 在仓库目录运行 `npm start`。
-4. 在自动打开的 WorkBuddy 中新建无敏感测试任务。
-5. 运行 `npm run service:status`，确认 `faults` 为空、队列逐渐清空，记下 Session ID。Langfuse Session 页面默认可能只显示模型/工具；点击其中的 Trace 链接查看完整树和等待步骤。
-6. 等任务完成、Langfuse 入库后，运行 `npm run langfuse:verify -- <Session ID>`。预期 `passed: true`。
+1. 填写 Langfuse 基础地址，例如 `http://localhost:3000`。Cloud 用户填写项目所属区域的地址，不包含 `/api` 或项目页面路径。
+2. 选择是否已有组织、项目和项目 API Keys。
+3. 如果没有，组织名称默认 `Personal`，项目名称默认 `WorkBuddy`，可按回车使用默认值。向导可以打开 Langfuse 页面，提示登录、创建组织和项目，然后到项目 **Settings → API Keys** 生成密钥。
+4. 填写项目 Public Key、Secret Key。密钥输入不回显；已有密钥可按回车保留。
+5. 选择 `metadata` 或 `text`，以及是否启用采集。
+6. 验证通过后显示实际项目并保存。WorkBuddy 已退出时，可以选择立即启动。
 
-`npm start` 会重新校验并更新实际安装文件。WorkBuddy 运行时命令会提示退出，不会强制关闭正在执行的任务。第一次启用自动服务从当前事件位置开始，不扫描或回灌此前所有任务；重启后则继续处理已登记任务和停机期间的新到达数据。
+默认名称用于引导在 Langfuse 中创建资源；填写名称不会自动创建组织或项目。最终接入项目由密钥确定，保存的 `project_name` 和 `project_id` 来自实际查询；`organization_name` 是创建时的提示名称，不代表已经通过 API 核验了组织归属。项目 API Keys 的获取方式见 [Langfuse 官方文档](https://langfuse.com/docs/api-and-data-platform/features/public-api)。
 
-每天需要采集时，通过仓库中的 `npm start` 启动 WorkBuddy。不要移动或删除仓库后继续使用旧安装；本地 marketplace 和服务数据都与该目录关联。路径含空格受支持，终端进入该路径时请加引号。
+验证失败不会覆盖原配置。已有配置仅关闭采集、且地址与密钥保持不变时，可以在 Langfuse 暂时不可达的情况下保存关闭设置，再使用停止入口停止当前进程。
 
-## 正文与价格设置
+## 启动与修改配置
 
-运行 `npm run configure` 可以切换 `metadata` 或 `text`。默认 `metadata` 不上传对话与工具正文。`text` 包含用户问题、模型可见回复、工具参数和结果，会先脱敏并截断；它不代表模型看到的完整 prompt。
+完全退出 WorkBuddy 后，双击 **启动 WorkBuddy.command**。它会尝试打开 Docker Desktop，启动 Collector 和上报服务，再带采集环境打开 WorkBuddy。Docker 首次启动或准备时间较长时，请先完成 Docker 的提示，再重新打开启动入口。
 
-可编辑 `.local/settings.json`：
+直接点击普通 WorkBuddy 图标不会启用采集。启动入口不会强制结束正在执行的任务。
+
+需要修改时，重新打开 **配置 Langfuse.command**。配置在服务启动时读取；更改后退出 WorkBuddy，再通过专用入口启动。正文模式按 Session 固定，更改后应新建任务，继续旧任务会保留原模式或报告冲突。
+
+首次启用从当前事件位置开始登记任务，不自动回灌所有历史。重启后继续处理已登记任务和已持久化队列。
+
+## 配置文件
+
+唯一的文件配置入口是 `~/.workbuddy/langfuse.json`。不读取仓库 `.env` 或 `.local/settings.json`，不提供旧配置迁移。
 
 ```json
 {
-  "content": "metadata",
-  "maxContentChars": 16000,
-  "stalledAfterSeconds": 60,
-  "pollIntervalMs": 1000,
-  "prices": {}
+  "enabled": true,
+  "base_url": "http://localhost:3000",
+  "public_key": "pk-lf-替换为项目PublicKey",
+  "secret_key": "sk-lf-替换为项目SecretKey",
+  "organization_name": "Personal",
+  "project_name": "WorkBuddy",
+  "content": "metadata"
 }
 ```
 
-正文模式按 Session 固定。更改后退出 WorkBuddy，重新 `npm start`，并**新建任务**；继续旧 Session 改变正文模式会被隔离。服务配置在启动时读取，`npm start` 会重启上报服务使设置生效。
+向导还会保存实际项目 ID、运行数据目录和默认运行设置。JSON 文件不加密密钥；安装器和向导使用仅当前用户可读写的文件权限。不要分享整个配置文件。
 
-价格按实际模型名配置，货币只接受 USD，必须填写来源和所有非零用量类型的每百万 Token 价格。下面只是配置格式，数字是演示值，不能作为真实模型报价：
+可选设置包括 `maxContentChars`（默认 16000）、`stalledAfterSeconds`（默认 60）、`pollIntervalMs`（默认 1000）和 `prices`（默认空对象）。需要调整时可编辑同一文件，保存后重新启动接入。
+
+`metadata` 不上传对话和工具正文；`text` 包含用户问题、可见回复、工具参数与结果，先按有限规则脱敏并截断。它不是完整模型 prompt，无法保证识别所有业务秘密。
+
+价格按实际模型名配置，仅接受 USD，需填写来源及每百万 Token 价格。以下仅展示格式，数字不能作为真实模型报价：
 
 ```json
 {
   "prices": {
     "replace-with-actual-model-name": {
       "currency": "USD",
-      "source": "填写你核实过的价格页面、合同编号与日期",
+      "source": "你核实过的价格页面、合同编号与日期",
       "perMillion": {
         "input": 2,
         "input_cached": 0.5,
@@ -75,54 +80,45 @@ LANGFUSE_SECRET_KEY=sk-lf-替换为项目SecretKey
 }
 ```
 
-未配置时仍上传 WorkBuddy 实际积分，不自创美元价格。Langfuse 自己的模型目录可能另行计算成本；核对本插件提供的金额时，以 `costBasis=configured-usd-estimate` 与 `priceSource` 为准。
+将 `prices` 合并到现有配置，保留其他字段。未配置时仍上传实际 WorkBuddy 积分；积分不直接换算成美元。
 
-## 更新与回滚
+## 状态、更新和卸载
 
-先退出 WorkBuddy，停止服务，再更新代码：
+打开 **查看状态.command**，可以看到配置开关、连接地址、实际项目、服务是否运行、待发送数量、最近任务 ID 和异常。服务尚未启动时会明确显示未运行。根据任务 ID，在 Langfuse 的 Sessions 页面查看对应任务。
 
-```bash
-npm stop
-git pull --ff-only
-npm test
-npm start
-```
+更新前完全退出 WorkBuddy，打开 **停止采集.command**；下载新版安装包后重新运行 **安装.command**。更新会替换程序文件，保留同一份配置和运行数据。不要删除数据目录来处理重复记录。
 
-不要删除 `.local` 来“修复重复数据”，发送账本就在其中。升级时应备份 `.env`、整个 `.local` 和 Hook 数据目录；SQLite 在线备份请使用 SQLite backup API，普通文件复制应在服务和 Collector 停止后进行，并保留伴随文件。
+卸载时，完全退出 WorkBuddy，打开 **卸载插件.command**。卸载会停止采集、移除 WorkBuddy Hook 插件和本工具的启动入口，保留配置、发送账本和 Langfuse 历史。重新安装后可以继续使用保留的数据。
 
-需要回滚时，停止服务，检出已验证的版本，再执行该版本安装命令。恢复与该版本匹配的备份前，必须核查升级期间是否已有新记录上传；回滚旧账本会遗忘这些发送，导致重复。已有 Langfuse 历史不会随代码回滚而删除。
+## 命令行使用
 
-## 停止与卸载
+安装器提供 `~/.local/bin/workbuddy-langfuse`。若 `~/.local/bin` 已在 PATH 中，可以直接使用命令名；否则使用下面的完整路径。安装器不修改你的 Shell 配置。
 
 ```bash
-npm stop
+~/.local/bin/workbuddy-langfuse configure
+~/.local/bin/workbuddy-langfuse start
+~/.local/bin/workbuddy-langfuse status
+~/.local/bin/workbuddy-langfuse stop
 ```
 
-停止本地接收与发送，保留队列和历史。当前 WorkBuddy 进程的环境不会被外部命令撤回；完全退出后，从普通应用入口重新打开，Hook 默认不再记录。
+开发者也可在源码目录运行 `npm run install:local` 安装当前代码，或运行 `npm run configure`、`npm start`。这些方式共用用户配置与运行数据，源码目录本身不再保存接入凭证或正式发送状态。
 
-完全退出 WorkBuddy 后卸载：
+## 文件位置与高级覆盖
 
-```bash
-npm run plugin:uninstall
-```
-
-这只移除本插件，不改动其他插件、任务、Langfuse 项目或凭证。确认无需恢复后再自行归档本地数据；保留发送账本有助于今后避免重复。
-
-## 地址和数据位置
-
-| 项目 | 默认位置 |
+| 用途 | 默认位置 |
 |---|---|
-| Collector 接收 | `127.0.0.1:14318/v1/traces` |
-| 本地状态/停止接口 | `127.0.0.1:14319`，随机令牌认证 |
-| 项目凭证 | 仓库 `.env` |
-| 配置 | `.local/settings.json` |
-| 原生元数据与关联结果 | `.local/collector/` |
-| 增量游标、任务状态、待发送 payload | `.local/sidecar.sqlite` |
-| 投影后的任务记录 | `.local/transcripts.sqlite` |
-| 发送账本 | `.local/langfuse-deliveries.sqlite` |
+| 用户配置 | `~/.workbuddy/langfuse.json` |
+| 安装文件 | `~/.workbuddy/langfuse-plugin/app/` |
+| 启动入口 | `~/Applications/WorkBuddy Langfuse/` |
+| 命令行入口 | `~/.local/bin/workbuddy-langfuse` |
+| 队列、游标、发送账本和启动日志 | `~/.workbuddy/langfuse-plugin/state/` |
+| Collector 元数据与 Session 关联 | 上述目录中的 `collector/` |
 | Hook 通知 | `~/.workbuddy/langfuse-plugin/hooks.jsonl` |
-| WorkBuddy 原始任务文件 | `~/.workbuddy/projects/`，由 WorkBuddy 自己管理 |
 
-端口可通过 `WB_LF_PORT` 和 `WB_LF_SERVICE_PORT` 调整；Collector、服务与 WorkBuddy 启动必须使用同一终端环境。`WORKBUDDY_APP_PATH` 指定应用路径；`WORKBUDDY_CONFIG_DIR` 指定 WorkBuddy 配置根目录；`WORKBUDDY_LANGFUSE_DATA_DIR` 指定 Hook 目录。更换 Langfuse 项目请使用单独安装目录，服务会阻止旧队列被自动送到不同项目。
+高级命令行场景中，连接参数按“`WORKBUDDY_LANGFUSE_*` 环境变量 → 标准 `LANGFUSE_*` 环境变量 → JSON → 默认值”读取。两种密钥都必须成对设置；环境变量不会自动打开 `enabled`。安装器生成的启动命令清除连接参数的环境覆盖，始终使用用户保存的配置。
 
-遇到问题见[排障手册](troubleshooting.md)；需要了解字段含义和正文范围，见[字段说明](../architecture/data-model.md)。[返回文档导航](../README.md)。
+`WORKBUDDY_CONFIG_DIR` 可指定 WorkBuddy 配置目录，`WORKBUDDY_LANGFUSE_CONFIG` 可指定本插件配置文件。`WORKBUDDY_LANGFUSE_STATE_DIR` 可覆盖运行数据目录；`WORKBUDDY_LANGFUSE_DATA_DIR` 可指定 Hook 日志目录。自定义路径仅供明确需要隔离环境的场景，不能用空账本回放已发送任务。
+
+本地默认端口为 Collector `14318`、状态服务 `14319`，可分别通过 `WB_LF_PORT`、`WB_LF_SERVICE_PORT` 调整，相关进程必须使用一致设置。
+
+[排障手册](troubleshooting.md) · [文档导航](../README.md)

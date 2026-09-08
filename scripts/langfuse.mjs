@@ -4,8 +4,9 @@ import { createHash } from 'node:crypto';
 import { resolve } from 'node:path';
 import { readPreview } from './preview.mjs';
 import { attributes, spansFrom, summarize } from './data.mjs';
-import { prepare, root } from './cli.mjs';
+import { prepare, local } from './cli.mjs';
 import { enrichSession } from './session-input.mjs';
+import { readConfig } from './settings.mjs';
 
 const spanOf = batch => batch.resourceSpans[0].scopeSpans[0].spans[0];
 const identity = span => `${span.traceId}:${span.spanId}`;
@@ -133,13 +134,11 @@ export async function sendRecords(records, ledger, request) {
   return reserved.length;
 }
 
-export function langfuseConfig() {
-  try { process.loadEnvFile(resolve(root, '.env')); } catch (error) { if (error.code !== 'ENOENT') throw error; }
-  const baseUrl = new URL(process.env.LANGFUSE_BASE_URL || 'http://localhost:3000');
-  if (!['http:', 'https:'].includes(baseUrl.protocol) || baseUrl.username || baseUrl.password || baseUrl.search || baseUrl.hash) throw new Error('LANGFUSE_BASE_URL 无效。');
-  if (!process.env.LANGFUSE_PUBLIC_KEY || !process.env.LANGFUSE_SECRET_KEY) throw new Error('请在项目 .env 中填写 Langfuse 项目密钥。');
+export function langfuseConfig(config = readConfig()) {
+  const baseUrl = new URL(config.base_url);
+  if (!config.public_key || !config.secret_key) throw new Error('尚未配置项目密钥，请打开“配置 Langfuse.command”或运行 workbuddy-langfuse configure。');
   const base = baseUrl.href.replace(/\/$/, '');
-  const auth = `Basic ${Buffer.from(`${process.env.LANGFUSE_PUBLIC_KEY}:${process.env.LANGFUSE_SECRET_KEY}`).toString('base64')}`;
+  const auth = `Basic ${Buffer.from(`${config.public_key}:${config.secret_key}`).toString('base64')}`;
   return { base, request: (path, options = {}) => fetch(`${base}${path}`, { ...options, redirect: 'error',
     signal: AbortSignal.timeout(15000), headers: { ...options.headers, Authorization: auth } }) };
 }
@@ -147,17 +146,18 @@ export function langfuseConfig() {
 async function main() {
   const [sessionId, option] = process.argv.slice(2);
   if (!sessionId || (option && option !== '--send')) throw new Error('用法：npm run langfuse:upload -- <Session ID> [--send]');
-  const preview = await readPreview(resolve(root, '.local/collector'));
+  const preview = await readPreview(resolve(local, 'collector'));
   const records = await enrichSession(selectSession(preview.batches, sessionId), sessionId);
   const summary = summarize(spansFrom(records.map(record => record.payload)));
   if (!option) { console.log(JSON.stringify({ mode: 'preview', sessionId, ...summary, note: '本次未连接或上传 Langfuse；加 --send 才发送。仅选择已结束的主 Trace。' }, null, 2)); return; }
+  if (!readConfig().enabled) throw new Error('采集已关闭，请先通过配置向导启用。');
   const { base, request } = langfuseConfig();
   const response = await request('/api/public/projects');
   if (!response.ok) throw new Error(`Langfuse 项目认证失败（HTTP ${response.status}）。`);
   const projects = (await response.json()).data;
   if (projects?.length !== 1 || !projects[0].id) throw new Error('必须使用单个 Langfuse 项目的密钥。');
   await prepare();
-  const ledger = new DeliveryLedger(resolve(root, '.local/langfuse-deliveries.sqlite'), `${base}/${projects[0].id}`);
+  const ledger = new DeliveryLedger(resolve(local, 'langfuse-deliveries.sqlite'), `${base}/${projects[0].id}`);
   try {
     const uploaded = await sendRecords(records, ledger, body => request('/api/public/otel/v1/traces', {
       method: 'POST', headers: { 'Content-Type': 'application/json', 'x-langfuse-ingestion-version': '4' }, body,

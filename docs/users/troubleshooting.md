@@ -1,17 +1,19 @@
 # 排障与恢复
 
-先运行 `npm run doctor`、`npm run service:status` 和 `npm run status`。前者检查环境，第二个看自动队列与具体错误，第三个保留底层到达统计。不要先删除数据库。
+先打开 **查看状态.command**，查看连接、上报状态和异常。修改连接参数请使用 **配置 Langfuse.command**。
+
+需要进一步诊断时，进入安装目录 `~/.workbuddy/langfuse-plugin/app/`，再运行下文的命令。`npm run doctor` 检查环境，`npm run service:status` 查看完整队列和错误，`npm run status` 保留底层到达统计。不要先删除数据库。
 
 ## 常见情况
 
 | 现象 | 检查与处理 |
 |---|---|
-| 普通图标启动后没有新数据 | 退出 WorkBuddy，通过仓库中的 `npm start` 重开。插件持久安装不等于本次进程启用了采集 |
+| 普通图标启动后没有新数据 | 退出 WorkBuddy，通过 **启动 WorkBuddy.command** 重开。插件持久安装不等于本次进程启用了采集 |
 | 只有 synthetic，没有自己的任务 | synthetic 是通道测试。检查 Hook 新事件、新 Session 与原生 interaction；用新任务验收 |
-| service.json 不存在/连接拒绝 | 服务未运行，Docker 与 Collector 就绪后执行 `npm run service:start`；详细启动错误用 `npm run service:foreground` |
+| service.json 不存在/连接拒绝 | 服务未运行，使用 **启动 WorkBuddy.command** 启动完整接入；详细启动错误用 `npm run service:foreground` |
 | WorkBuddy 未完全退出 | 从应用菜单退出；启动脚本不会强制结束现有任务 |
-| 插件文件 stale | 更新命令使用内置插件 API 并核对文件；确认仓库、marketplace 和安装版本对应，退出应用后重跑安装 |
-| queue 暂时增加 | 可能是网络不可达或 Langfuse 拒绝。查看 faults，修正地址或项目密钥后等待重试 |
+| 插件文件 stale | 更新命令使用内置插件 API 并核对文件；退出 WorkBuddy、停止采集后重新运行新版安装器 |
+| queue 暂时增加 | 可能是网络不可达或 Langfuse 拒绝。查看 faults，通过配置向导修正地址或项目密钥，然后重新启动接入 |
 | waitingForNativeOrTranscript 有 ready | 可能在等最终任务记录，也可能是尚无原生任务步骤锚点的后台 Trace；队列为空且主任务 verify 通过时，辅助记录不需要强行上传 |
 | pending / unassociated | 等原生 Session 锚点，或 WorkBuddy 辅助 span 没有主任务归属；不代表这些辅助记录都应上传 |
 | 原生 ID 内容变化 | 编辑、重生成或价格/正文变化影响了已冻结记录，已隔离；不要删账本强行覆盖 |
@@ -20,6 +22,15 @@
 | Trace 页面一直停留在早期记录 | 页面可能没有自动刷新，刷新后再核对完整树；这与 API 入库可见性分开判断 |
 | Langfuse 一开始缺少父节点 | 子 span 可先到，根到整轮结束才导出；待入库后用 verify 核对完整结构 |
 | 运行状态 quiet | 只是未见新活动；长工具、模型等待都可能出现，不等于错误 |
+
+## 配置与安装问题
+
+- 配置只读取 `~/.workbuddy/langfuse.json`，修改源码目录的 `.env` 不会生效。
+- 提示 JSON 错误时，检查文件语法；错误提示不会打印密钥。
+- 提示项目与账本不匹配时，原配置保持不变。请核对项目密钥，不要清空账本。
+- 更新提示服务或 Collector 仍在运行时，先退出 WorkBuddy 并打开停止入口。
+- 安装目标已有其他文件时，安装器会停止，不覆盖同名的个人命令。
+- 找不到 `workbuddy-langfuse` 命令时，使用 `~/.local/bin/workbuddy-langfuse`，或直接打开用户应用程序中的入口。
 
 ## 不确定发送
 
@@ -50,7 +61,7 @@ npm run langfuse:verify -- <Session ID>
 
 ## 本地数据损坏或目标变更
 
-SQLite 错误、摘要冲突、Session 冲突都应保留现场。停止本地服务后备份数据，再分析错误，不能以清空队列作为“验收通过”。不要把 A 项目的旧队列直接换密钥发送到 B 项目；使用单独目录，或先完成 A 项目的恢复核对。
+SQLite 错误、摘要冲突、Session 冲突都应保留现场。停止本地服务后备份数据，再分析错误，不能以清空队列作为“验收通过”。不要把 A 项目的旧队列直接换密钥发送到 B 项目；为新项目配置独立的数据目录，或先完成 A 项目的恢复核对。
 
 Collector 在原生 SDK 前不可达时，SDK 尚未持久化的记录可能丢失；后续看到缺少 observation 应报告采集缺口，不用猜测时间或正文补造。Hook 写入故障静默返回也可能导致未登记任务，需要新的正常 Hook 或新的验收任务。
 

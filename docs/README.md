@@ -14,6 +14,7 @@
 | 文档 | 内容 |
 |---|---|
 | [开发与验证](developers/README.md) | 代码入口、测试环境、检查命令及各类验证的范围 |
+| [0.5.0 安装与配置检查](developers/acceptance/onboarding-0.5.0.md) | 新安装、配置向导、更新、卸载与验证范围 |
 | [完整交付清单](developers/acceptance/completion-plan.md) | v0.4.0 的交付要求与对应证据 |
 | [完整验收记录](developers/acceptance/acceptance-phase3-2026-09-08.md) | 真实桌面任务、故障恢复、安装兼容性与验证边界 |
 

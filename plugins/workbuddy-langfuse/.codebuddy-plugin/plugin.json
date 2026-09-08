@@ -1,6 +1,6 @@
 {
   "name": "workbuddy-langfuse",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "WorkBuddy 原生追踪、可选脱敏正文与用量补充；由本地服务增量发送到 Langfuse。",
   "hooks": "./hooks/events.json"
 }

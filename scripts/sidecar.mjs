@@ -14,12 +14,12 @@ import { enrichBatches } from './enrichment.mjs';
 import { connectLangfuse, reconcileDeliveries } from './recovery.mjs';
 import { attributes } from './data.mjs';
 import { activityView } from './activity.mjs';
-import { readSettings } from './settings.mjs';
-import { root, dataDir, configDir } from './cli.mjs';
+import { readConfig } from './settings.mjs';
+import { local, dataDir, configDir } from './cli.mjs';
 
 const spanOf = payload => payload.resourceSpans[0].scopeSpans[0].spans[0];
 const digest = payload => createHash('sha256').update(JSON.stringify(payload)).digest('hex');
-const local = join(root, '.local'), runtimePath = join(local, 'service.json');
+const runtimePath = join(local, 'service.json');
 
 export function enrichmentReady(span, records) {
   const attrs = attributes(span.attributes), type = attrs['span.type'];
@@ -145,14 +145,15 @@ export class Sidecar {
   close() { this.core.close(); this.store.close(); this.transcripts.close(); this.ledger?.close(); }
 }
 
-async function runtimeRequest(path) {
-  const runtime = JSON.parse(await readFile(runtimePath, 'utf8'));
+export async function runtimeRequest(path, directory = local) {
+  const runtime = JSON.parse(await readFile(join(directory, 'service.json'), 'utf8'));
   return fetch(`http://127.0.0.1:${runtime.port}${path}`, { method: path === '/stop' ? 'POST' : 'GET',
     headers: { Authorization: `Bearer ${runtime.token}` }, signal: AbortSignal.timeout(2000), redirect: 'error' });
 }
 async function serve() {
   await mkdir(local, { recursive: true, mode: 0o700 });
-  const settings = await readSettings(), token = randomUUID();
+  const settings = readConfig(), token = randomUUID();
+  if (!settings.enabled) throw new Error('采集已关闭，请先通过配置向导启用。');
   let running = true, sidecar, retryAfter = 0;
   const server = createServer((req, res) => {
     if (req.headers.authorization !== `Bearer ${token}`) { res.writeHead(403).end(); return; }

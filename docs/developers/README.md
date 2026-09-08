@@ -2,6 +2,20 @@
 
 本页面向修改插件或复现验证的开发者。安装与日常使用见[接入指南](../users/getting-started.md)，整体流程见[架构说明](../architecture/overview.md)。
 
+## 配置、安装与打包
+
+当前配置统一由 [settings.mjs](../../scripts/settings.mjs) 读取用户目录的 `langfuse.json`；[wizard.mjs](../../scripts/wizard.mjs) 组织交互问题，[setup.mjs](../../scripts/setup.mjs) 验证项目并提供用户操作。[install.mjs](../../scripts/install.mjs) 管理固定安装目录、命令和可双击入口。
+
+```bash
+npm run package
+```
+
+在 `dist/` 生成按版本命名的 macOS ZIP 和 SHA-256 文件。打包使用明确的文件清单，不包含凭证、正式运行数据或 Git 状态。ZIP 中保留开发文档与测试，便于学习；发布前应从解压后的目录进行安装检查。
+
+`npm run install:local` 将当前源码安装到用户目录，会修改本人的配置、安装文件和入口。日常开发建议使用隔离的 WorkBuddy 配置文件及数据目录，避免启动开发版本处理正在使用的队列。`npm test` 中的安装与配置测试使用临时用户目录，不安装到真实用户环境。
+
+0.5.0 不读取或迁移旧仓库 `.env`、`.local/settings.json`，不扫描和移动旧发送记录。新的安装和后续更新使用同一份用户数据，更新不重置发送账本。
+
 ## 开发环境与代码入口
 
 需要 Node.js 24+。仓库使用 Node.js 内置模块，没有第三方 npm 依赖，无需 `npm install`。Collector 检查需要 Docker Desktop；插件引擎检查需要 macOS 上已安装的 WorkBuddy，当前适配版本为 5.5.3。
@@ -52,6 +66,7 @@ npm run langfuse:verify -- <Session ID>
 
 | 文档 | 用途 |
 |---|---|
+| [0.5.0 安装与配置检查](acceptance/onboarding-0.5.0.md) | 用户配置、安装包、入口与验证边界 |
 | [完整交付清单](acceptance/completion-plan.md) | v0.4.0 全部交付项和证据对应关系 |
 | [阶段 3 与完整验收](acceptance/acceptance-phase3-2026-09-08.md) | 自动增量上报、真实任务、故障恢复与最终边界 |
 | [阶段 2B 验收](acceptance/acceptance-phase2b-2026-09-08.md) | 正文、缓存与计费数据 |

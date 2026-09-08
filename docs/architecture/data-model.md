@@ -37,7 +37,7 @@ Langfuse output               = 原 output
 
 在写入本插件的任务缓存前，去掉常见 secret/password/API key/authorization 字段、常见密钥文本、私钥块、思考标签和个人 home 路径。超出配置字符数的值截断并标记 `inputTruncated/outputTruncated`；处理过敏感匹配时标记 Redacted。
 
-这是有限规则脱敏，无法识别所有业务秘密、个人信息或自定义凭证格式。需要这些内容始终不离开本机时，请保持 `metadata`。WorkBuddy 自己维护的原始任务文件不由本插件清洗；分享排障材料时不要直接分享该文件、`.env` 或整个 `.local`。
+这是有限规则脱敏，无法识别所有业务秘密、个人信息或自定义凭证格式。需要这些内容始终不离开本机时，请保持 `metadata`。WorkBuddy 自己维护的原始任务文件不由本插件清洗；分享排障材料时不要直接分享该文件、`langfuse.json` 或整个运行数据目录。
 
 ## 本地活动状态
 

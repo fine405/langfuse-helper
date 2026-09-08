@@ -1,7 +1,7 @@
 import { isMain } from './entry.mjs';
 import { resolve } from 'node:path';
 import { DeliveryLedger, langfuseConfig } from './langfuse.mjs';
-import { root } from './cli.mjs';
+import { local } from './cli.mjs';
 
 export async function observationsForTrace(request, traceId) {
   const observations = [], cursors = new Set();
@@ -37,8 +37,8 @@ export async function reconcileDeliveries(ledger, request) {
   return report;
 }
 
-export async function connectLangfuse() {
-  const config = langfuseConfig();
+export async function connectLangfuse(settings) {
+  const config = langfuseConfig(settings);
   const response = await config.request('/api/public/projects');
   if (!response.ok) throw new Error(`Langfuse 项目认证失败（HTTP ${response.status}）。`);
   const projects = (await response.json()).data;
@@ -48,7 +48,7 @@ export async function connectLangfuse() {
 
 async function main() {
   const { request, target } = await connectLangfuse();
-  const ledger = new DeliveryLedger(resolve(root, '.local/langfuse-deliveries.sqlite'), target);
+  const ledger = new DeliveryLedger(resolve(local, 'langfuse-deliveries.sqlite'), target);
   try {
     const report = await reconcileDeliveries(ledger, request);
     const [option, identity] = process.argv.slice(2);

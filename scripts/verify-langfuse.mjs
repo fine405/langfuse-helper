@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { selectSession, langfuseConfig } from './langfuse.mjs';
 import { readPreview } from './preview.mjs';
 import { spansFrom } from './data.mjs';
-import { root } from './cli.mjs';
+import { local } from './cli.mjs';
 import { enrichSession } from './session-input.mjs';
 
 export function compareObservations(expected, actual, sessionId) {
@@ -66,7 +66,7 @@ export function compareObservations(expected, actual, sessionId) {
 async function main() {
   const sessionId = process.argv[2];
   if (!sessionId) throw new Error('用法：npm run langfuse:verify -- <Session ID>');
-  const preview = await readPreview(resolve(root, '.local/collector'));
+  const preview = await readPreview(resolve(local, 'collector'));
   const expected = spansFrom((await enrichSession(selectSession(preview.batches, sessionId), sessionId)).map(record => record.payload));
   const { request } = langfuseConfig();
   const actual = [];

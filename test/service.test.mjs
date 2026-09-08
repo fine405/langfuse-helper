@@ -17,10 +17,11 @@ test('real service process keeps durable capture during lost HTTP acknowledgemen
   const directory = await mkdtemp(join(tmpdir(), 'wb lf daemon '));
   await cp(join(root, 'scripts'), join(directory, 'scripts'), { recursive: true });
   await cp(join(root, 'collector'), join(directory, 'collector'), { recursive: true });
-  await mkdir(join(directory, '.local/collector'), { recursive: true });
+  const state = join(directory, 'user-state');
+  await mkdir(join(state, 'collector'), { recursive: true });
   const projects = join(directory, 'config/projects'); await mkdir(projects, { recursive: true });
   const hooksDir = join(directory, 'hooks'); await mkdir(hooksDir);
-  const core = new TraceStore(join(directory, '.local/collector/traces.sqlite'));
+  const core = new TraceStore(join(state, 'collector/traces.sqlite'));
   let posts = 0, observed = [];
   const mock = createServer(async (req, res) => {
     res.setHeader('Content-Type', 'application/json');
@@ -37,11 +38,15 @@ test('real service process keeps durable capture during lost HTTP acknowledgemen
     res.writeHead(404).end();
   });
   const mockPort = await listen(mock), probe = createServer(), servicePort = await listen(probe); await new Promise(resolve => probe.close(resolve));
+  await writeFile(join(directory, 'config/langfuse.json'), JSON.stringify({ enabled: true,
+    base_url: `http://127.0.0.1:${mockPort}`, public_key: 'pk-fixture', secret_key: 'sk-fixture', data_directory: state }));
   let child, startupError = '';
   const start = () => { child = spawn(process.execPath, [join(directory, 'scripts/sidecar.mjs'), 'serve'], { stdio: ['ignore', 'ignore', 'pipe'], env: { ...process.env,
     WORKBUDDY_CONFIG_DIR: join(directory, 'config'), WORKBUDDY_LANGFUSE_DATA_DIR: hooksDir, WB_LF_SERVICE_PORT: String(servicePort),
-    LANGFUSE_BASE_URL: `http://127.0.0.1:${mockPort}`, LANGFUSE_PUBLIC_KEY: 'pk-fixture', LANGFUSE_SECRET_KEY: 'sk-fixture' } }); child.stderr.on('data', chunk => { startupError += chunk; }); };
-  const runtime = async () => { if (child.exitCode !== null && child.exitCode !== 0) throw new Error(startupError); try { return JSON.parse(await readFile(join(directory, '.local/service.json'), 'utf8')); } catch { return null; } };
+    WORKBUDDY_LANGFUSE_CONFIG: join(directory, 'config/langfuse.json'), WORKBUDDY_LANGFUSE_STATE_DIR: state,
+    LANGFUSE_BASE_URL: undefined, LANGFUSE_PUBLIC_KEY: undefined, LANGFUSE_SECRET_KEY: undefined,
+    WORKBUDDY_LANGFUSE_BASE_URL: undefined, WORKBUDDY_LANGFUSE_PUBLIC_KEY: undefined, WORKBUDDY_LANGFUSE_SECRET_KEY: undefined } }); child.stderr.on('data', chunk => { startupError += chunk; }); };
+  const runtime = async () => { if (child.exitCode !== null && child.exitCode !== 0) throw new Error(startupError); try { return JSON.parse(await readFile(join(state, 'service.json'), 'utf8')); } catch { return null; } };
   const status = async token => { try { return await (await fetch(`http://127.0.0.1:${servicePort}/status`, { headers: { Authorization: `Bearer ${token}` } })).json(); } catch { return null; } };
   try {
     start(); const initial = await eventually(runtime);

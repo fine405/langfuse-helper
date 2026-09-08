@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { root, dataDir } from './cli.mjs';
+import { local, dataDir } from './cli.mjs';
 import { readJsonLines, spansFrom } from './data.mjs';
 import { assessPhase1 } from './acceptance.mjs';
 import { readPreview } from './preview.mjs';
@@ -8,7 +8,7 @@ try {
   const sessionId = process.argv[2];
   if (!sessionId) throw new Error('用法：npm run accept:phase1 -- <WorkBuddy Session ID>');
   const [preview, hooks] = await Promise.all([
-    readPreview(join(root, '.local/collector')),
+    readPreview(join(local, 'collector')),
     readJsonLines(join(dataDir, 'hooks.jsonl')),
   ]);
   const result = assessPhase1(spansFrom(preview.batches), hooks, sessionId);

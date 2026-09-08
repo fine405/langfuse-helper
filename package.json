@@ -1,6 +1,6 @@
 {
   "name": "workbuddy-langfuse-plugin",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "private": true,
   "type": "module",
   "engines": {
@@ -15,7 +15,6 @@
     "preview:export": "node scripts/cli.mjs preview:export",
     "accept:phase1": "node scripts/accept-phase1.mjs",
     "workbuddy:launch": "node scripts/cli.mjs launch",
-    "workbuddy:launch:phase2": "node scripts/cli.mjs launch:phase2",
     "langfuse:upload": "node scripts/langfuse.mjs",
     "langfuse:verify": "node scripts/verify-langfuse.mjs",
     "plugin:install": "node scripts/cli.mjs plugin:install",
@@ -31,6 +30,9 @@
     "recover": "node scripts/recovery.mjs",
     "configure": "node scripts/setup.mjs configure",
     "start": "node scripts/setup.mjs start",
-    "stop": "node scripts/setup.mjs stop"
+    "stop": "node scripts/setup.mjs stop",
+    "install:local": "node scripts/install.mjs",
+    "package": "node scripts/package.mjs",
+    "app:status": "node scripts/setup.mjs status"
   }
 }

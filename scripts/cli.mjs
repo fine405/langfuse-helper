@@ -1,26 +1,26 @@
 import { isMain } from './entry.mjs';
 import { spawnSync, spawn } from 'node:child_process';
 import { mkdir, access, open } from 'node:fs/promises';
-import { homedir } from 'node:os';
-import { join, dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join, dirname } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { demoPayload, readJsonLines, spansFrom, summarize } from './data.mjs';
 import { withEngine, installPlugin, pluginId } from './engine.mjs';
 import { readPreview } from './preview.mjs';
-import { readSettings } from './settings.mjs';
+import { readConfig, stateDirectory, projectRoot, workbuddyHome } from './settings.mjs';
 
-export const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+export const local = stateDirectory();
+export const root = projectRoot;
+export const configDir = workbuddyHome;
 export const app = process.env.WORKBUDDY_APP_PATH || '/Applications/WorkBuddy.app';
-export const dataDir = process.env.WORKBUDDY_LANGFUSE_DATA_DIR || join(homedir(), '.workbuddy', 'langfuse-plugin');
+export const dataDir = process.env.WORKBUDDY_LANGFUSE_DATA_DIR || join(configDir, 'langfuse-plugin');
 const executable = join(app, 'Contents/MacOS/Electron');
-export const configDir = process.env.WORKBUDDY_CONFIG_DIR || process.env.CODEBUDDY_CONFIG_DIR || join(homedir(), '.workbuddy');
 export const composeFile = join(root, 'collector/compose.yaml');
 export const port = Number(process.env.WB_LF_PORT || 14318);
 
 export function compose(args, extraEnv = {}) {
   const result = spawnSync('docker', ['compose', '-f', composeFile, ...args], {
     cwd: root, stdio: 'inherit', env: { ...process.env,
+      WB_LF_COLLECTOR_DATA: join(local, 'collector'),
       WB_LF_UID: String(process.getuid?.() ?? 1000), WB_LF_GID: String(process.getgid?.() ?? 1000), ...extraEnv },
   });
   if (result.error) throw result.error;
@@ -28,7 +28,7 @@ export function compose(args, extraEnv = {}) {
 }
 
 export async function prepare() {
-  await mkdir(join(root, '.local/collector'), { recursive: true, mode: 0o700 });
+  await mkdir(join(local, 'collector'), { recursive: true, mode: 0o700 });
 }
 
 async function exists(path) { try { await access(path); return true; } catch { return false; } }
@@ -89,12 +89,12 @@ async function main(command) {
     }
     case 'demo': console.log(JSON.stringify({ syntheticTraceId: (await sendDemo()).traceId, note: '模拟数据；请稍后运行 npm run status。未上传 Langfuse。' }, null, 2)); break;
     case 'preview:export': {
-      const preview = await readPreview(join(root, '.local/collector'));
+      const preview = await readPreview(join(local, 'collector'));
       for (const batch of preview.batches) console.log(JSON.stringify(batch));
       break;
     }
     case 'status': {
-      const preview = await readPreview(join(root, '.local/collector'));
+      const preview = await readPreview(join(local, 'collector'));
       const spans = spansFrom(preview.batches);
       const synthetic = spans.filter(span => span.attributes['workbuddy.langfuse.source'] === 'synthetic');
       const native = spans.filter(span => span.attributes['workbuddy.langfuse.source'] !== 'synthetic');
@@ -105,17 +105,17 @@ async function main(command) {
         note: '诊断统计保留重复记录用于发现问题；不是去重上报器。usage 缺失表示未知。' }, null, 2));
       break;
     }
-    case 'launch':
-    case 'launch:phase2': {
+    case 'launch': {
       requireWorkBuddyClosed();
       await prepare();
-      const settings = await readSettings();
+      const settings = readConfig();
+      if (!settings.enabled) throw new Error('采集已关闭，请先通过配置向导启用。');
       const env = { ...process.env, CODEBUDDY_CODE_ENABLE_TELEMETRY: '1', OTEL_TRACES_EXPORTER: 'otlp',
         OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: `http://127.0.0.1:${port}/v1/traces`, OTEL_EXPORTER_OTLP_TRACES_PROTOCOL: 'http/protobuf',
-        OTEL_SERVICE_NAME: 'workbuddy', OTEL_SEMCONV: command === 'launch:phase2' ? 'agentlens' : 'codebuddy',
+        OTEL_SERVICE_NAME: 'workbuddy', OTEL_SEMCONV: 'agentlens',
         OTEL_LOG_USER_PROMPTS: '0', OTEL_LOG_TOOL_DETAILS: '0', OTEL_LOG_TOOL_CONTENT: '0', OTEL_LOG_RAW_API_BODIES: '0',
         WORKBUDDY_LANGFUSE_DATA_DIR: dataDir, WORKBUDDY_LANGFUSE_ENABLED: '1',
-        WORKBUDDY_LANGFUSE_CONTENT: command === 'launch:phase2' ? settings.content : 'metadata',
+        WORKBUDDY_LANGFUSE_CONTENT: settings.content,
         PATH: `${dirname(process.execPath)}:${process.env.PATH || ''}`,
       };
       delete env.ELECTRON_RUN_AS_NODE;
@@ -123,8 +123,10 @@ async function main(command) {
       delete env.OTEL_EXPORTER_OTLP_TRACES_HEADERS;
       delete env.LANGFUSE_PUBLIC_KEY;
       delete env.LANGFUSE_SECRET_KEY;
+      delete env.WORKBUDDY_LANGFUSE_PUBLIC_KEY;
+      delete env.WORKBUDDY_LANGFUSE_SECRET_KEY;
       if (env.DISABLE_TELEMETRY || env.OTEL_SDK_DISABLED === 'true') throw new Error('当前环境已禁用遥测，请先检查 DISABLE_TELEMETRY / OTEL_SDK_DISABLED。');
-      const log = await open(join(root, '.local/workbuddy-startup.log'), 'a', 0o600);
+      const log = await open(join(local, 'workbuddy-startup.log'), 'a', 0o600);
       const child = spawn(executable, [], { detached: true, stdio: ['ignore', log.fd, log.fd], env });
       await new Promise((resolve, reject) => { child.once('spawn', resolve); child.once('error', reject); });
       child.unref(); await log.close();
