@@ -53,3 +53,5 @@ Langfuse output               = 原 output
 | quiet=true | 活跃状态超过阈值没有新事件，审批等待除外 |
 
 `quiet` 只表示一段时间没有可见新活动，不能断言模型卡死；`process-exited` 也不假装知道最终业务结果。工具失败不等于整轮失败，Agent 可能恢复继续。状态显示在本地，Langfuse 继续以真实原生 observation 为准。
+
+设置方法见[接入指南](../users/getting-started.md)，数据如何上报见[架构说明](overview.md)。[返回文档导航](../README.md)。

@@ -1,4 +1,4 @@
-> 历史阶段记录。当前完整接入请使用 [接入指南](getting-started.md)；后续功能与最终结果见 [完整验收](acceptance-phase3-2026-09-08.md)。
+> 历史阶段记录。当前完整接入请使用 [接入指南](../../users/getting-started.md)；后续功能与最终结果见 [完整验收](acceptance-phase3-2026-09-08.md)。
 
 # 第二阶段 A：元数据与 Token 上报
 

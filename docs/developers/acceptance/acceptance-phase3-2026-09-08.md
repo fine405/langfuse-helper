@@ -62,4 +62,4 @@ Trace 页面保持打开时可能停留在早期快照，需要刷新才能看�
 
 ## 交付范围与边界
 
-保留原生 ID/时间，不重建猜测的模型轨迹。已经进入磁盘队列或 SQLite 的数据可恢复；WorkBuddy 原生 SDK 尚未送到 Collector 的内存数据仍可能丢失。未知 usage/货币价格不伪装为零。正文只做有限规则脱敏，不宣称覆盖所有业务秘密。详见 [architecture.md](architecture.md)、[data-model.md](data-model.md) 和 [troubleshooting.md](troubleshooting.md)。
+保留原生 ID/时间，不重建猜测的模型轨迹。已经进入磁盘队列或 SQLite 的数据可恢复；WorkBuddy 原生 SDK 尚未送到 Collector 的内存数据仍可能丢失。未知 usage/货币价格不伪装为零。正文只做有限规则脱敏，不宣称覆盖所有业务秘密。详见 [overview.md](../../architecture/overview.md)、[data-model.md](../../architecture/data-model.md) 和 [troubleshooting.md](../../users/troubleshooting.md)。

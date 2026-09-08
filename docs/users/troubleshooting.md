@@ -53,3 +53,5 @@ npm run langfuse:verify -- <Session ID>
 SQLite 错误、摘要冲突、Session 冲突都应保留现场。停止本地服务后备份数据，再分析错误，不能以清空队列作为“验收通过”。不要把 A 项目的旧队列直接换密钥发送到 B 项目；使用单独目录，或先完成 A 项目的恢复核对。
 
 Collector 在原生 SDK 前不可达时，SDK 尚未持久化的记录可能丢失；后续看到缺少 observation 应报告采集缺口，不用猜测时间或正文补造。Hook 写入故障静默返回也可能导致未登记任务，需要新的正常 Hook 或新的验收任务。
+
+[返回接入指南](getting-started.md) · [文档导航](../README.md)

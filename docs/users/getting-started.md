@@ -124,3 +124,5 @@ npm run plugin:uninstall
 | WorkBuddy 原始任务文件 | `~/.workbuddy/projects/`，由 WorkBuddy 自己管理 |
 
 端口可通过 `WB_LF_PORT` 和 `WB_LF_SERVICE_PORT` 调整；Collector、服务与 WorkBuddy 启动必须使用同一终端环境。`WORKBUDDY_APP_PATH` 指定应用路径；`WORKBUDDY_CONFIG_DIR` 指定 WorkBuddy 配置根目录；`WORKBUDDY_LANGFUSE_DATA_DIR` 指定 Hook 目录。更换 Langfuse 项目请使用单独安装目录，服务会阻止旧队列被自动送到不同项目。
+
+遇到问题见[排障手册](troubleshooting.md)；需要了解字段含义和正文范围，见[字段说明](../architecture/data-model.md)。[返回文档导航](../README.md)。

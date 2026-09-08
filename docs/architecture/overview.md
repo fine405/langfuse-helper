@@ -1,5 +1,22 @@
 # 架构、增量读取与恢复
 
+集成由 WorkBuddy 插件、本地 Collector 和上报服务组成。插件通知任务事件，原生 OpenTelemetry 提供正式追踪记录，任务文件补充模型、缓存、积分和可选正文。
+
+```mermaid
+flowchart LR
+  W[WorkBuddy 原生已结束 span] --> C[本机 Collector\n过滤正文和身份字段]
+  C --> Q[持久队列 → Session 关联 SQLite]
+  H[插件 Hook\n只写本机事件] --> S[增量上报服务]
+  T[已登记任务文件\n增量读取、投影和脱敏] --> S
+  Q --> S
+  S --> D[冻结 payload + 持久发送账本]
+  D --> L[Langfuse 项目]
+  L --> R[不确定结果按 ID + 摘要核对]
+  R --> D
+```
+
+本项目不会在每次 Hook 后全量重传整份对话。任务文件增量读取，已确认发送的记录由本地账本跳过；不能把 Langfuse 展示去重当作可靠性基础，也不能承诺端到端 exactly-once。下面按正常上报、发送身份和故障恢复解释具体时序。字段映射与正文范围见[数据模型](data-model.md)。
+
 ## 三条本地输入汇合
 
 正式 observation 来自 WorkBuddy 原生 OpenTelemetry。Collector 删除正文、原生资源身份及错误正文，映射 observation 类型，然后通过持久磁盘队列交给 Session 关联器。关联器在事务提交后才确认接收；按 trace ID 补齐缺失 Session，冲突保留并隔离。
@@ -78,7 +95,7 @@ sequenceDiagram
 
 `accepted` 代表完整 HTTP 接收确认或查询核对成功，不等于每个字段已通过最终验收。`langfuse:verify` 会另查真实入库数据。发送前的连接拒绝、DNS 失败可证明尚未发送 HTTP 正文，因此可以延迟重试；其他网络异常保守进入 uncertain。重启遗留的 sending 也按不确定结果处理。
 
-每个请求最多 50 条、正文控制在约 3 MiB；队列与账本持久化。不确定记录不阻塞其他 Session 的可发送记录。查询缺失不能证明永远未入库，人工确认缺失的释放入口见[排障](troubleshooting.md)。
+每个请求最多 50 条、正文控制在约 3 MiB；队列与账本持久化。不确定记录不阻塞其他 Session 的可发送记录。查询缺失不能证明永远未入库，人工确认缺失的释放入口见[排障](../users/troubleshooting.md)。
 
 ## 能恢复的范围
 
@@ -87,3 +104,5 @@ sequenceDiagram
 原生 SDK 交给 Collector 之前仍有窗口：WorkBuddy 崩溃、内存中的未结束 span、Collector 长时间不可达等可能导致尚未持久化的数据缺失。任务文件不是原生 span 的完整替代，服务不会凭猜测重造丢失的时间线。Hook 丢失也可能使新任务未被登记。底层丢失应作为采集缺口报告，不能被去重逻辑“修复”。
 
 服务没有云端后台依赖，也不自启动登录项。电脑关机、休眠或手动停止后不会持续运行。恢复工作时重新启动 Docker 和 `npm start`。
+
+继续阅读[字段、费用与正文边界](data-model.md)，或[返回文档导航](../README.md)。

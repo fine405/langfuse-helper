@@ -13,7 +13,7 @@ function run(script, argument) {
   if (result.error || result.status !== 0) throw new Error(result.error?.message || `${argument} 未完成，请处理上面的提示后重试。`);
 }
 async function configure() {
-  if (!process.stdin.isTTY) throw new Error('请在交互终端运行 npm run configure；也可按 docs/getting-started.md 手工填写 .env。');
+  if (!process.stdin.isTTY) throw new Error('请在交互终端运行 npm run configure；也可按 docs/users/getting-started.md 手工填写 .env。');
   try { process.loadEnvFile(join(root, '.env')); } catch (error) { if (error.code !== 'ENOENT') throw error; }
   let hidden = false;
   const output = new Writable({ write(chunk, encoding, done) { if (!hidden) process.stdout.write(chunk, encoding); done(); } });
