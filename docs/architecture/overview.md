@@ -21,6 +21,8 @@ flowchart LR
 
 npm 全局安装管理程序文件和 CLI 命令链接，`langfuse-helper workbuddy` 根据子命令调用配置、启动、诊断或恢复流程。程序、配置和运行数据分别保存：
 
+源码开发也通过 `node bin/langfuse-helper.mjs workbuddy <command>` 使用同一入口；npm scripts 只用于测试和打包。
+
 | 内容 | 默认位置与职责 |
 |---|---|
 | 程序 | npm 全局目录中的 `langfuse-helper`，包含 Hook 插件、Collector 配置及上报服务 |

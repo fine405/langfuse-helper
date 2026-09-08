@@ -26,21 +26,6 @@ npm install -g ./langfuse-helper-0.6.0.tgz
 
 程序及命令链接由 npm 管理，配置和发送记录位于用户目录。全局安装提供稳定路径，适合 Hook 插件和后台服务持续引用。这里采用 npm 支持的 [Git URL 和本地包安装方式](https://docs.npmjs.com/cli/v11/commands/npm-install/)。
 
-## 从 0.5.0 安装器迁移
-
-完全退出 WorkBuddy，先用旧安装的 CLI 卸载旧程序和快捷入口：
-
-```bash
-"$HOME/.local/bin/workbuddy-langfuse" uninstall
-npm install -g git+ssh://git@github.com/fine405/workbuddy-langfuse-plugin.git
-langfuse-helper --version
-langfuse-helper workbuddy status
-```
-
-旧版卸载保留 `~/.workbuddy/langfuse.json`、队列和发送账本。新版读取同一配置，不用重新输入密钥；退出 WorkBuddy 后运行 `langfuse-helper workbuddy start`，会重新注册新路径下的 Hook 插件。若此前直接从源码运行，先在原源码目录执行 `npm stop`，再安装 CLI。
-
-不要同时运行旧入口和新 CLI。安装后运行 `command -v langfuse-helper` 确认新命令的位置；旧版 `workbuddy-langfuse` 命令不再使用。
-
 ## 首次配置
 
 运行 `langfuse-helper workbuddy configure`，按照英文向导操作：
@@ -62,7 +47,7 @@ langfuse-helper workbuddy status
 
 直接点击普通 WorkBuddy 图标不会启用采集。启动入口不会强制结束正在执行的任务。
 
-需要修改时，运行 `langfuse-helper workbuddy configure`。配置在服务启动时读取；更改后退出 WorkBuddy，再通过专用入口启动。正文模式按 Session 固定，更改后应新建任务，继续旧任务会保留原模式或报告冲突。
+需要修改时，运行 `langfuse-helper workbuddy configure`。配置在服务启动时读取；更改后退出 WorkBuddy，再运行 `langfuse-helper workbuddy start`。正文模式按 Session 固定，更改后应新建任务，继续旧任务会保留原模式或报告冲突。
 
 首次启用从当前事件位置开始登记任务，不自动回灌所有历史。重启后继续处理已登记任务和已持久化队列。
 
@@ -135,7 +120,7 @@ npm uninstall -g langfuse-helper
 
 ## 从源码运行与打包
 
-开发时可在源码目录运行 `node bin/langfuse-helper.mjs --help`；原有 `npm run configure`、`npm start`、`npm stop` 也指向同一个 CLI。配置和正式发送状态不保存在源码目录。
+开发时在源码目录使用 `node bin/langfuse-helper.mjs workbuddy <command>`，例如 `node bin/langfuse-helper.mjs workbuddy --help`。配置和正式发送状态不保存在源码目录。
 
 维护者运行 `npm run package`，在 `dist/` 生成标准 `.tgz` 包和 SHA-256 文件。安装包通过 npm 的文件清单仅包含运行代码、插件、Collector 配置和文档，不包含用户配置、运行数据库或测试目录。
 
@@ -150,7 +135,7 @@ npm uninstall -g langfuse-helper
 | Collector 元数据与 Session 关联 | 上述目录中的 `collector/` |
 | Hook 通知 | `~/.workbuddy/langfuse-plugin/hooks.jsonl` |
 
-高级命令行场景中，连接参数按“`WORKBUDDY_LANGFUSE_*` 环境变量 → 标准 `LANGFUSE_*` 环境变量 → JSON → 默认值”读取。两种密钥都必须成对设置；环境变量不会自动打开 `enabled`。CLI 遵循当前终端的环境变量；与旧安装器不同，不会清除这些覆盖。配置向导会提示已有覆盖，旧变量不再需要时应先清除。
+高级命令行场景中，连接参数按“`WORKBUDDY_LANGFUSE_*` 环境变量 → 标准 `LANGFUSE_*` 环境变量 → JSON → 默认值”读取。两种密钥都必须成对设置；环境变量不会自动打开 `enabled`。CLI 遵循当前终端的环境变量，配置向导会提示已有覆盖；不再需要的覆盖变量应先清除。
 
 `WORKBUDDY_CONFIG_DIR` 可指定 WorkBuddy 配置目录，`WORKBUDDY_LANGFUSE_CONFIG` 可指定本插件配置文件。`WORKBUDDY_LANGFUSE_STATE_DIR` 可覆盖运行数据目录；`WORKBUDDY_LANGFUSE_DATA_DIR` 可指定 Hook 日志目录。自定义路径仅供明确需要隔离环境的场景，不能用空账本回放已发送任务。
 

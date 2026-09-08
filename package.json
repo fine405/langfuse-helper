@@ -7,32 +7,11 @@
     "node": ">=24"
   },
   "scripts": {
-    "doctor": "node scripts/cli.mjs doctor",
-    "collector:start": "node scripts/cli.mjs collector:start",
-    "collector:stop": "node scripts/cli.mjs collector:stop",
-    "demo": "node scripts/cli.mjs demo",
-    "status": "node scripts/cli.mjs status",
-    "preview:export": "node scripts/cli.mjs preview:export",
-    "accept:phase1": "node scripts/accept-phase1.mjs",
-    "workbuddy:launch": "node scripts/cli.mjs launch",
-    "langfuse:upload": "node scripts/langfuse.mjs",
-    "langfuse:verify": "node scripts/verify-langfuse.mjs",
-    "plugin:install": "node scripts/cli.mjs plugin:install",
-    "plugin:uninstall": "node scripts/cli.mjs plugin:uninstall",
     "test": "node --test test/*.test.mjs",
     "test:collector": "node scripts/test-collector.mjs",
     "test:plugin": "node scripts/test-plugin.mjs",
     "test:langfuse": "node scripts/test-langfuse.mjs",
-    "service:start": "node scripts/sidecar.mjs start",
-    "service:stop": "node scripts/sidecar.mjs stop",
-    "service:status": "node scripts/sidecar.mjs status",
-    "service:foreground": "node scripts/sidecar.mjs serve",
-    "recover": "node scripts/recovery.mjs",
-    "configure": "node bin/langfuse-helper.mjs workbuddy configure",
-    "start": "node bin/langfuse-helper.mjs workbuddy start",
-    "stop": "node bin/langfuse-helper.mjs workbuddy stop",
-    "package": "node scripts/package.mjs",
-    "app:status": "node bin/langfuse-helper.mjs workbuddy status"
+    "package": "node scripts/package.mjs"
   },
   "description": "Langfuse integration CLI for AI agents, with WorkBuddy support",
   "bin": {

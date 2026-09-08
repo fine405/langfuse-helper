@@ -53,7 +53,7 @@ langfuse-helper workbuddy status
 | `langfuse-helper workbuddy doctor` | 检查运行环境 |
 | `langfuse-helper workbuddy --help` | 查看 WorkBuddy 完整命令说明 |
 
-更改配置后，退出 WorkBuddy 并重新 `start`；正文模式对新建任务生效。更新与卸载由 npm 管理，具体步骤及旧版迁移见[接入指南](docs/users/getting-started.md)。
+更改配置后，退出 WorkBuddy 并重新 `start`；正文模式对新建任务生效。更新与卸载由 npm 管理，具体步骤见[接入指南](docs/users/getting-started.md)。
 
 ## 可以看到什么
 

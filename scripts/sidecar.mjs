@@ -210,6 +210,6 @@ async function main() {
     return;
   }
   if (command === 'status') { const response = await runtimeRequest('/status'); if (!response.ok) throw new Error('Status request was rejected'); console.log(JSON.stringify(await response.json(), null, 2)); return; }
-  throw new Error('Use service:start, service:stop, service:status or service:foreground');
+  throw new Error('Unknown service command. Run langfuse-helper workbuddy --help.');
 }
 if (isMain(import.meta.url)) main().catch(error => { console.error(error.message); process.exitCode = 1; });

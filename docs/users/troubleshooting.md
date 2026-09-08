@@ -30,7 +30,7 @@
 - 提示项目与账本不匹配时，原配置保持不变。请核对项目密钥，不要清空账本。
 - 更新前先退出 WorkBuddy 并运行 `langfuse-helper workbuddy stop`；npm 不会自动停止运行中的服务。
 - npm 提示权限不足时，使用当前用户可写的 Node.js/npm 安装位置；不要用强制覆盖来处理未知的同名命令。
-- 找不到命令时，运行 `npm config get prefix`，确认该目录下的 `bin` 已加入 PATH，然后重新打开终端。迁移后仍命中旧版时，按接入指南先卸载旧安装器版本。
+- 找不到命令时，运行 `npm config get prefix`，确认该目录下的 `bin` 已加入 PATH，然后重新打开终端。运行 `command -v langfuse-helper` 确认命令位置。
 
 ## 不确定发送
 

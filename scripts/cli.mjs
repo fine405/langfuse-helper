@@ -69,8 +69,7 @@ async function main(command) {
       const checks = { node: process.version, nodeSupported: Number(process.versions.node.split('.')[0]) >= 24,
         workbuddyFound: await exists(executable), workbuddyVersion: version.status === 0 ? version.stdout.trim() : null,
         configDirectoryExists: await exists(configDir), dockerReady: docker.status === 0,
-        collectorEndpoint: `http://127.0.0.1:${port}/v1/traces`, hookDataDirectory: dataDir,
-        phase: '3: native tracing, optional transcript enrichment, durable automatic delivery' };
+        collectorEndpoint: `http://127.0.0.1:${port}/v1/traces`, hookDataDirectory: dataDir };
       console.log(JSON.stringify(checks, null, 2));
       if (!checks.nodeSupported || !checks.workbuddyFound || !checks.dockerReady) process.exitCode = 1;
       break;
@@ -85,12 +84,6 @@ async function main(command) {
         else await request('/plugins/uninstall', { plugin: pluginId });
       });
       console.log(command === 'plugin:install' ? 'Plugin installed or updated and verified. Run langfuse-helper workbuddy start to enable capture.' : 'WorkBuddy plugin removed.');
-      break;
-    }
-    case 'demo': console.log(JSON.stringify({ syntheticTraceId: (await sendDemo()).traceId, note: 'Synthetic data. Run langfuse-helper workbuddy diagnose to inspect it. Nothing was uploaded to Langfuse.' }, null, 2)); break;
-    case 'preview:export': {
-      const preview = await readPreview(join(local, 'collector'));
-      for (const batch of preview.batches) console.log(JSON.stringify(batch));
       break;
     }
     case 'status': {
@@ -133,7 +126,7 @@ async function main(command) {
       console.log('WorkBuddy started with capture enabled. Create a new task, then run langfuse-helper workbuddy status.');
       break;
     }
-    default: throw new Error('Unknown command. Use an npm script listed in README.md.');
+    default: throw new Error('Unknown command. Run langfuse-helper workbuddy --help.');
   }
 }
 

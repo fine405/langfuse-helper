@@ -31,7 +31,7 @@ try {
     assert.equal(runtime.plugins, 1);
     assert.equal(runtime.hooks, 11, 'Each event must register once');
   });
-  // Match npm start: each installation uses a fresh, bounded control process.
+  // Match langfuse-helper workbuddy start: each installation uses a fresh, bounded control process.
   for (const version of ['0.0.2', '0.0.1']) {
     manifest.version = version;
     await writeFile(manifestPath, JSON.stringify(manifest));
