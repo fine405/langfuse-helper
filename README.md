@@ -9,7 +9,7 @@
 需要 **macOS、Node.js 24+、可访问的 Langfuse 项目**。WorkBuddy 还需要 Docker Desktop；Codex 不需要 Docker。
 
 ```bash
-npm install -g git+ssh://git@github.com/fine405/workbuddy-langfuse-plugin.git
+npm install -g git+ssh://git@github.com/fine405/langfuse-helper.git
 langfuse-helper
 ```
 

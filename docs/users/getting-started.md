@@ -5,7 +5,7 @@
 需要 macOS、Node.js 24+ 和可访问的 Langfuse Project（支持 OTLP v4）。WorkBuddy 还需要 Docker Desktop；Codex 需要支持插件与 Stop hook 的 CLI，或带内置 CLI 的桌面应用。当前适配 WorkBuddy 5.5.3、Codex CLI 0.153.4。
 
 ```bash
-npm install -g git+ssh://git@github.com/fine405/workbuddy-langfuse-plugin.git
+npm install -g git+ssh://git@github.com/fine405/langfuse-helper.git
 langfuse-helper
 ```
 
@@ -90,7 +90,7 @@ langfuse-helper codex stop
 ```bash
 langfuse-helper workbuddy stop
 langfuse-helper codex stop
-npm install -g git+ssh://git@github.com/fine405/workbuddy-langfuse-plugin.git
+npm install -g git+ssh://git@github.com/fine405/langfuse-helper.git
 ```
 
 只执行自己接入的 agent 命令。更新后重新 `start`；Codex 必要时重新审阅 hook，并新建任务。npm 不会自动停止后台服务。
