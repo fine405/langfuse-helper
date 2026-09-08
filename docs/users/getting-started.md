@@ -41,7 +41,7 @@
 
 ## 配置文件
 
-唯一的文件配置入口是 `~/.workbuddy/langfuse.json`。不读取仓库 `.env` 或 `.local/settings.json`，不提供旧配置迁移。
+文件配置统一保存在 `~/.workbuddy/langfuse.json`，由安装器和配置向导读写。
 
 ```json
 {
@@ -101,7 +101,7 @@
 ~/.local/bin/workbuddy-langfuse stop
 ```
 
-开发者也可在源码目录运行 `npm run install:local` 安装当前代码，或运行 `npm run configure`、`npm start`。这些方式共用用户配置与运行数据，源码目录本身不再保存接入凭证或正式发送状态。
+如果选择从源码安装，可在源码目录运行 `npm run install:local`，或直接运行 `npm run configure`、`npm start`。这些方式共用用户配置与运行数据，源码目录不保存接入凭证或正式发送状态。
 
 ## 文件位置与高级覆盖
 

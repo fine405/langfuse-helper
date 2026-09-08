@@ -17,6 +17,23 @@ flowchart LR
 
 本项目不会在每次 Hook 后全量重传整份对话。任务文件增量读取，已确认发送的记录由本地账本跳过；不能把 Langfuse 展示去重当作可靠性基础，也不能承诺端到端 exactly-once。下面按正常上报、发送身份和故障恢复解释具体时序。字段映射与正文范围见[数据模型](data-model.md)。
 
+## 安装、配置与启动
+
+安装器将程序复制到固定的用户目录，创建命令行和可双击的操作入口。程序、配置和运行数据分别保存：
+
+| 内容 | 默认位置与职责 |
+|---|---|
+| 程序 | `~/.workbuddy/langfuse-plugin/app/`，包含 Hook 插件、Collector 配置及上报服务 |
+| 用户配置 | `~/.workbuddy/langfuse.json`，保存连接、密钥、采集开关、正文模式和运行设置 |
+| 运行数据 | `~/.workbuddy/langfuse-plugin/state/`，保存关联结果、读取游标、待发送记录和发送账本 |
+| 操作入口 | `~/Applications/WorkBuddy Langfuse/` 和 `~/.local/bin/workbuddy-langfuse` |
+
+配置向导提供组织与项目的创建指引，使用项目密钥查询实际项目。密钥由本地上报服务持有，启动 WorkBuddy 时不传入密钥。向导以原子替换方式保存权限为 0600 的配置文件，认证失败或项目与现有账本冲突时不覆盖原配置。
+
+启动入口先检查 WorkBuddy 已退出、配置已启用、发送目标与端口可用，再安装 Hook 插件、启动 Collector 和上报服务，最后带原生遥测设置打开 WorkBuddy。配置在进程启动时读取，正文模式按 Session 固定；更改后需要重新启动接入并新建任务。具体操作见[接入指南](../users/getting-started.md)。
+
+更新替换程序文件，保留用户配置与运行数据。卸载移除插件、程序和操作入口，保留配置、队列与发送账本。保留发送身份是后续重启或重新安装时避免重复发送的基础。
+
 ## 三条本地输入汇合
 
 正式 observation 来自 WorkBuddy 原生 OpenTelemetry。Collector 删除正文、原生资源身份及错误正文，映射 observation 类型，然后通过持久磁盘队列交给 Session 关联器。关联器在事务提交后才确认接收；按 trace ID 补齐缺失 Session，冲突保留并隔离。
@@ -93,7 +110,7 @@ sequenceDiagram
   end
 ```
 
-`accepted` 代表完整 HTTP 接收确认或查询核对成功，不等于每个字段已通过最终验收。`langfuse:verify` 会另查真实入库数据。发送前的连接拒绝、DNS 失败可证明尚未发送 HTTP 正文，因此可以延迟重试；其他网络异常保守进入 uncertain。重启遗留的 sending 也按不确定结果处理。
+`accepted` 代表完整 HTTP 接收确认或查询核对成功，不能据此判断每个字段都已核对。`langfuse:verify` 会另查真实入库数据。发送前的连接拒绝、DNS 失败可证明尚未发送 HTTP 正文，因此可以延迟重试；其他网络异常保守进入 uncertain。重启遗留的 sending 也按不确定结果处理。
 
 每个请求最多 50 条、正文控制在约 3 MiB；队列与账本持久化。不确定记录不阻塞其他 Session 的可发送记录。查询缺失不能证明永远未入库，人工确认缺失的释放入口见[排障](../users/troubleshooting.md)。
 
@@ -103,6 +120,19 @@ sequenceDiagram
 
 原生 SDK 交给 Collector 之前仍有窗口：WorkBuddy 崩溃、内存中的未结束 span、Collector 长时间不可达等可能导致尚未持久化的数据缺失。任务文件不是原生 span 的完整替代，服务不会凭猜测重造丢失的时间线。Hook 丢失也可能使新任务未被登记。底层丢失应作为采集缺口报告，不能被去重逻辑“修复”。
 
-服务没有云端后台依赖，也不自启动登录项。电脑关机、休眠或手动停止后不会持续运行。恢复工作时重新启动 Docker 和 `npm start`。
+服务没有云端后台依赖，也不自启动登录项。电脑关机、休眠或手动停止后不会持续运行。恢复工作时通过专用启动入口重新打开 WorkBuddy。
+
+## 代码对应关系
+
+| 入口 | 职责 |
+|---|---|
+| [install.mjs](../../scripts/install.mjs) | 安装程序、创建操作入口及更新和卸载 |
+| [settings.mjs](../../scripts/settings.mjs) · [wizard.mjs](../../scripts/wizard.mjs) | 统一配置读取、校验与交互问题 |
+| [setup.mjs](../../scripts/setup.mjs) | 项目认证、启动、配置和状态展示 |
+| [WorkBuddy 插件](../../plugins/workbuddy-langfuse) | Hook 事件声明与本地通知 |
+| [Collector](../../collector) | 原生 OTLP 接收、过滤、持久队列及 Session 关联 |
+| [sidecar.mjs](../../scripts/sidecar.mjs) | 增量读取、任务状态与自动发送 |
+| [enrichment.mjs](../../scripts/enrichment.mjs) | 模型、用量和可选正文的补充 |
+| [langfuse.mjs](../../scripts/langfuse.mjs) · [recovery.mjs](../../scripts/recovery.mjs) | 持久发送账本、远端核对与恢复 |
 
 继续阅读[字段、费用与正文边界](data-model.md)，或[返回文档导航](../README.md)。

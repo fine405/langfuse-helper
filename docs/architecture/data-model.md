@@ -8,7 +8,7 @@
 
 ## Token 和积分
 
-WorkBuddy 5.5.3 的本次实测响应中，规范化 `input_tokens` 包含缓存命中。通过 `rawUsage.prompt_tokens` 核对后，映射为互斥用量：
+针对已适配的 WorkBuddy 5.5.3 响应格式，规范化 `input_tokens` 包含缓存命中。通过 `rawUsage.prompt_tokens` 核对后，映射为互斥用量：
 
 ```text
 Langfuse input                = 原输入 - cacheRead - cacheWrite

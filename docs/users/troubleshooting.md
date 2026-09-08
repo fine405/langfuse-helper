@@ -9,7 +9,7 @@
 | 现象 | 检查与处理 |
 |---|---|
 | 普通图标启动后没有新数据 | 退出 WorkBuddy，通过 **启动 WorkBuddy.command** 重开。插件持久安装不等于本次进程启用了采集 |
-| 只有 synthetic，没有自己的任务 | synthetic 是通道测试。检查 Hook 新事件、新 Session 与原生 interaction；用新任务验收 |
+| 只有 synthetic，没有自己的任务 | synthetic 是模拟记录。检查 Hook 新事件、新 Session 与原生 interaction；新建任务后查看对应 Session |
 | service.json 不存在/连接拒绝 | 服务未运行，使用 **启动 WorkBuddy.command** 启动完整接入；详细启动错误用 `npm run service:foreground` |
 | WorkBuddy 未完全退出 | 从应用菜单退出；启动脚本不会强制结束现有任务 |
 | 插件文件 stale | 更新命令使用内置插件 API 并核对文件；退出 WorkBuddy、停止采集后重新运行新版安装器 |
@@ -25,7 +25,7 @@
 
 ## 配置与安装问题
 
-- 配置只读取 `~/.workbuddy/langfuse.json`，修改源码目录的 `.env` 不会生效。
+- 通过配置向导修改 `~/.workbuddy/langfuse.json`；修改后重新启动接入使设置生效。
 - 提示 JSON 错误时，检查文件语法；错误提示不会打印密钥。
 - 提示项目与账本不匹配时，原配置保持不变。请核对项目密钥，不要清空账本。
 - 更新提示服务或 Collector 仍在运行时，先退出 WorkBuddy 并打开停止入口。
@@ -46,23 +46,21 @@ npm run recover
 npm run recover -- --retry-confirmed-absent <traceId:spanId>
 ```
 
-脚本会再次查询，且拒绝释放未满 5 分钟或有冲突的记录。释放后服务下一次发送周期重试。保留发送账本和核查记录；不要批量删库或盲目重传全部 Session。早期版本没有保存 payload/deliveryDigest 的不确定记录无法按新摘要自动确认，应保留并人工核查，不能直接当成成功。
+脚本会再次查询，且拒绝释放未满 5 分钟或有冲突的记录。释放后服务下一次发送周期重试。保留发送账本和核查记录；不要批量删库或盲目重传全部 Session。
 
-## 手动预览和验证
+## 手动预览和入库核对
 
 ```bash
 npm run langfuse:upload -- <Session ID>
 npm run langfuse:verify -- <Session ID>
 ```
 
-第一个命令只做本地预览。历史任务需要人工选定并发送时才加 `--send`；它与自动发送共用账本。自动模式只登记启用后的任务，不自动回灌全部历史。verify 查询每个 Trace 的实际 observation，不会把 Session 字段缺失的错误记录从样本中排除。
-
-测试与真实接入分开：`npm run test:langfuse` 会留下明确标记 synthetic 的真实入库测试记录；它不会消耗模型积分。WorkBuddy 桌面验收会正常调用你选定的模型并消耗相应积分。
+第一个命令只做本地预览。历史任务需要人工选定并发送时才加 `--send`；它与自动发送共用账本。自动模式只登记启用后的任务，不自动回灌全部历史。verify 查询每个 Trace 的实际 observation，核对 ID、层级、时间、用量和正文等字段。
 
 ## 本地数据损坏或目标变更
 
-SQLite 错误、摘要冲突、Session 冲突都应保留现场。停止本地服务后备份数据，再分析错误，不能以清空队列作为“验收通过”。不要把 A 项目的旧队列直接换密钥发送到 B 项目；为新项目配置独立的数据目录，或先完成 A 项目的恢复核对。
+SQLite 错误、摘要冲突、Session 冲突都应保留现场。停止本地服务后备份数据，再分析错误，不要通过清空队列隐藏问题。不要把 A 项目的队列直接换密钥发送到 B 项目；为新项目配置独立的数据目录，或先完成 A 项目的恢复核对。
 
-Collector 在原生 SDK 前不可达时，SDK 尚未持久化的记录可能丢失；后续看到缺少 observation 应报告采集缺口，不用猜测时间或正文补造。Hook 写入故障静默返回也可能导致未登记任务，需要新的正常 Hook 或新的验收任务。
+Collector 在原生 SDK 前不可达时，SDK 尚未持久化的记录可能丢失；后续看到缺少 observation 应报告采集缺口，不用猜测时间或正文补造。Hook 写入故障静默返回也可能导致任务未登记；处理写入问题后，新建任务检查是否恢复采集。
 
 [返回接入指南](getting-started.md) · [文档导航](../README.md)
