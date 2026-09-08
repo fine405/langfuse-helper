@@ -106,3 +106,18 @@ test('status --json forwards authenticated runtime data and preserves failure ex
   const failed = spawnSync(process.execPath, [join(projectRoot, 'bin/langfuse-helper.mjs'), 'workbuddy', 'status', '--json'], { env: f.env, encoding: 'utf8' });
   assert.equal(failed.status, 1);
 });
+
+test('Git installation keeps executable and bundled hooks after npm deletes its temporary checkout', async t => {
+  const f = await fixture(t), source = join(f.directory, 'git-source'), prefix = join(f.directory, 'git-prefix');
+  const packed = JSON.parse(run('npm', ['pack', '--json', '--ignore-scripts', '--pack-destination', f.directory], { cwd: projectRoot }))[0];
+  await mkdir(source);
+  run('tar', ['-xzf', join(f.directory, packed.filename), '--strip-components=1', '-C', source]);
+  run('git', ['init', '--quiet'], { cwd: source });
+  run('git', ['add', '.'], { cwd: source });
+  run('git', ['-c', 'user.name=Package Test', '-c', 'user.email=package-test@example.invalid', '-c', 'commit.gpgsign=false', 'commit', '--quiet', '-m', 'Package fixture'], { cwd: source });
+  run('npm', ['install', '--global', '--prefix', prefix, '--offline', '--no-audit', '--no-fund', `git+file://${source}`], { cwd: tmpdir(), env: f.env });
+  const cli = join(prefix, 'bin/langfuse-helper');
+  assert.ok(existsSync(cli), 'Global CLI must not link to a deleted npm git checkout');
+  assert.match(run(cli, ['codex', '--help'], { cwd: tmpdir(), env: f.env }), /Stop hook/);
+  assert.ok(existsSync(join(prefix, 'lib/node_modules/langfuse-helper/plugins/codex-langfuse/runtime/hook.mjs')));
+});

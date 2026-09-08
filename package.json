@@ -7,13 +7,13 @@
     "node": ">=24"
   },
   "scripts": {
-    "test": "npm run build && node --test test/*.test.mjs",
+    "test": "npm run build:codex && node --test test/*.test.mjs",
     "test:collector": "node scripts/test-collector.mjs",
     "test:plugin": "node scripts/test-plugin.mjs",
     "test:langfuse": "node scripts/test-langfuse.mjs",
-    "package": "npm run build && node scripts/package.mjs",
-    "build": "node scripts/build.mjs",
-    "test:codex:langfuse": "npm run build && node scripts/test-codex-langfuse.mjs"
+    "package": "npm run build:codex && node scripts/package.mjs",
+    "test:codex:langfuse": "npm run build:codex && node scripts/test-codex-langfuse.mjs",
+    "build:codex": "node scripts/build.mjs"
   },
   "description": "Discover local AI agents and connect WorkBuddy and Codex to Langfuse",
   "bin": {
