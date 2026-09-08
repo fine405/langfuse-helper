@@ -79,7 +79,7 @@ export class Sidecar {
           const record = { key: selected.key, payload: enriched, digest: digest(enriched) };
           this.store.transaction(() => {
             const previous = this.store.db.prepare('SELECT digest FROM queue WHERE identity = ?').get(record.key) || this.ledger?.status(record.key);
-            if (previous && previous.digest !== record.digest) throw new Error('原生 ID 对应的已冻结内容发生变化，已隔离');
+            if (previous && previous.digest !== record.digest) throw new Error('Frozen content changed for a native ID; record isolated');
             this.store.db.prepare('INSERT OR IGNORE INTO queue VALUES (?, ?, ?, ?, NULL)').run(record.key, record.digest, JSON.stringify(record.payload), session.id);
             this.store.db.prepare('DELETE FROM native_pending WHERE seq = ?').run(row.seq);
             if (attrs['span.type'] === 'interaction') {
@@ -100,7 +100,7 @@ export class Sidecar {
   async connect() {
     const config = await connectLangfuse();
     const previous = this.store.cursor('target');
-    if (previous && previous !== config.target) throw new Error('发送目标已变化；请恢复原项目配置，或为新项目使用单独安装目录');
+    if (previous && previous !== config.target) throw new Error('Delivery target changed. Restore the original project configuration or use a separate state directory for a new project');
     this.store.setCursor('target', config.target);
     this.config = config;
     this.ledger = new DeliveryLedger(join(this.directory, 'langfuse-deliveries.sqlite'), config.target);
@@ -111,7 +111,7 @@ export class Sidecar {
       this.lastReconcile = Date.now();
       const report = await reconcileDeliveries(this.ledger, this.config.request);
       for (const item of report) {
-        if (item.status === 'conflict') this.store.fault(item.identity, '远端 ID 重复或摘要不一致，需要人工核查');
+        if (item.status === 'conflict') this.store.fault(item.identity, 'Remote ID is duplicated or the digest differs; manual review required');
         else if (item.status === 'accepted') this.store.clearFault(item.identity);
       }
     }
@@ -119,7 +119,7 @@ export class Sidecar {
     let bytes = 0;
     for (const row of this.store.queueRows()) {
       const status = this.ledger.status(row.identity);
-      if (status?.digest && status.digest !== row.digest) { this.store.fault(row.identity, '发送账本与待发送正文摘要不同'); continue; }
+      if (status?.digest && status.digest !== row.digest) { this.store.fault(row.identity, 'Delivery ledger and queued payload digests differ'); continue; }
       if (status?.status === 'accepted') { this.store.db.prepare('DELETE FROM queue WHERE identity = ?').run(row.identity); continue; }
       if (['uncertain', 'sending'].includes(status?.status)) continue;
       if (pending.length && bytes + Buffer.byteLength(row.payload) > 3 * 1024 * 1024) break;
@@ -140,7 +140,7 @@ export class Sidecar {
       waitingForNativeOrTranscript: this.store.db.prepare('SELECT state, count(*) AS count FROM native_pending GROUP BY state').all(),
       deliveries: this.ledger?.counts() || {}, faults: this.store.db.prepare('SELECT * FROM faults').all(),
       sessions: this.store.sessions().map(session => ({ sessionId: session.id, content: session.mode, ...activityView(JSON.parse(session.activity), this.settings) })),
-      note: '只有已完成的原生 span 发送到 Langfuse；waiting/quiet/process-exited 是本地活动证据，不伪造模型耗时或结束结果。' };
+      note: 'Only completed native spans are sent to Langfuse. waiting/quiet/process-exited are local activity evidence, not fabricated model timing or results.' };
   }
   close() { this.core.close(); this.store.close(); this.transcripts.close(); this.ledger?.close(); }
 }
@@ -153,7 +153,7 @@ export async function runtimeRequest(path, directory = local) {
 async function serve() {
   await mkdir(local, { recursive: true, mode: 0o700 });
   const settings = readConfig(), token = randomUUID();
-  if (!settings.enabled) throw new Error('采集已关闭，请先通过配置向导启用。');
+  if (!settings.enabled) throw new Error('Capture is disabled. Run langfuse-helper workbuddy configure to enable it.');
   let running = true, sidecar, retryAfter = 0;
   const server = createServer((req, res) => {
     if (req.headers.authorization !== `Bearer ${token}`) { res.writeHead(403).end(); return; }
@@ -185,31 +185,31 @@ async function main() {
   const command = process.argv[2];
   if (command === 'serve') return serve();
   if (command === 'start') {
-    try { const result = await runtimeRequest('/status'); if (result.ok) { console.log('自动上报服务已运行。'); return; } } catch {}
+    try { const result = await runtimeRequest('/status'); if (result.ok) { console.log('Delivery service is already running.'); return; } } catch {}
     await mkdir(local, { recursive: true, mode: 0o700 });
     const child = spawn(process.execPath, [fileURLToPath(import.meta.url), 'serve'], { detached: true, stdio: 'ignore', env: process.env });
     await new Promise((resolve, reject) => { child.once('spawn', resolve); child.once('error', reject); }); child.unref();
     for (let i = 0; i < 40; i++) {
       await delay(250);
-      try { if ((await runtimeRequest('/status')).ok) { console.log('自动上报服务已就绪；从现在起记录新的活动，保留历史与发送账本。'); return; } } catch {}
+      try { if ((await runtimeRequest('/status')).ok) { console.log('Delivery service is ready. New activity is captured; history and the delivery ledger are retained.'); return; } } catch {}
     }
-    throw new Error('服务未启动。请运行 npm run service:foreground 查看原因（常见为 Collector 未启动或端口占用）。');
+    throw new Error('Service failed to start. Run langfuse-helper workbuddy serve to see the error; Collector may be stopped or the port may be in use.');
   }
   if (command === 'stop') {
     try {
-      const response = await runtimeRequest('/stop'); if (!response.ok) throw new Error('停止请求被拒绝');
+      const response = await runtimeRequest('/stop'); if (!response.ok) throw new Error('Stop request was rejected');
       let stopped = false;
       for (let i = 0; i < 100; i++) {
         await delay(250);
         try { await readFile(runtimePath); } catch (error) { if (error.code === 'ENOENT') { stopped = true; break; } throw error; }
       }
-      if (!stopped) throw new Error('停止尚未确认；服务可能仍在完成一次有界请求，请稍后检查状态');
-      console.log('自动上报已停止；本地队列和 Langfuse 历史保留。');
+      if (!stopped) throw new Error('Stop is not yet confirmed. The service may be finishing a bounded request; check status shortly');
+      console.log('Delivery stopped. Local queues and Langfuse history are retained.');
     }
-    catch (error) { if (error.code === 'ENOENT' || error.cause?.code === 'ECONNREFUSED') console.log('自动上报服务没有运行。'); else throw error; }
+    catch (error) { if (error.code === 'ENOENT' || error.cause?.code === 'ECONNREFUSED') console.log('Delivery service is not running.'); else throw error; }
     return;
   }
-  if (command === 'status') { const response = await runtimeRequest('/status'); if (!response.ok) throw new Error('状态查询被拒绝'); console.log(JSON.stringify(await response.json(), null, 2)); return; }
+  if (command === 'status') { const response = await runtimeRequest('/status'); if (!response.ok) throw new Error('Status request was rejected'); console.log(JSON.stringify(await response.json(), null, 2)); return; }
   throw new Error('Use service:start, service:stop, service:status or service:foreground');
 }
 if (isMain(import.meta.url)) main().catch(error => { console.error(error.message); process.exitCode = 1; });

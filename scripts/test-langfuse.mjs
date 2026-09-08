@@ -46,7 +46,7 @@ try {
       headers: { 'Content-Type': 'application/json', 'x-langfuse-ingestion-version': '4' } });
     assert.ok(response.ok, 'Real ingestion must succeed before injecting a lost acknowledgement');
     throw new Error('Injected loss of acknowledgement after actual Langfuse ingestion');
-  }), /不确定/);
+  }), /uncertain/);
   ledger.close(); ledger = new DeliveryLedger(join(directory, 'ledger.sqlite'), `${base}/${project.id}`);
   assert.equal(ledger.uncertain().length, 3);
   let result;

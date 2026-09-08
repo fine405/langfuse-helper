@@ -60,12 +60,12 @@ export function compareObservations(expected, actual, sessionId) {
     inputTokens: total('input') + total('input_cached') + total('input_cache_creation'), outputTokens: total('output'),
     cachedInputTokens: total('input_cached'),
     workbuddyCredits: Number(actual.reduce((sum, span) => sum + Number(span.metadata?.workbuddyCredits || 0), 0).toFixed(8)),
-    costNote: 'WorkBuddy 积分与 USD 成本分开；configuredCost 仅核对显式配置的估算，不把积分或未知值当成美元费用。' };
+    costNote: 'WorkBuddy credits and USD costs are separate. configuredCost checks only explicitly configured estimates; credits and unknown values are not treated as USD costs.' };
 }
 
 async function main() {
   const sessionId = process.argv[2];
-  if (!sessionId) throw new Error('用法：npm run langfuse:verify -- <Session ID>');
+  if (!sessionId) throw new Error('Usage: langfuse-helper workbuddy verify <session-id>');
   const preview = await readPreview(resolve(local, 'collector'));
   const expected = spansFrom((await enrichSession(selectSession(preview.batches, sessionId), sessionId)).map(record => record.payload));
   const { request } = langfuseConfig();
@@ -77,11 +77,11 @@ async function main() {
     do {
       const query = new URLSearchParams({ traceId, limit: '1000', fields: 'basic,time,usage,model,io,metadata', ...(cursor ? { cursor } : {}) });
       const response = await request(`/api/public/v2/observations?${query}`);
-      if (!response.ok) throw new Error(`Langfuse 验证查询失败（HTTP ${response.status}）。`);
+      if (!response.ok) throw new Error(`Langfuse verification query failed (HTTP ${response.status}).`);
       const result = await response.json();
       actual.push(...result.data);
       cursor = result.meta?.cursor;
-      if (cursor && seen.has(cursor)) throw new Error('Langfuse 返回了重复分页游标。');
+      if (cursor && seen.has(cursor)) throw new Error('Langfuse returned a repeated pagination cursor.');
       seen.add(cursor);
     } while (cursor);
   }

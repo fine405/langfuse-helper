@@ -43,7 +43,7 @@ export class SidecarStore {
       const buffer = Buffer.alloc(Math.min(stat.size - offset, 4 * 1024 * 1024));
       const { bytesRead } = await file.read(buffer, 0, buffer.length, offset);
       const end = buffer.subarray(0, bytesRead).lastIndexOf(10) + 1;
-      if (!end && bytesRead === 4 * 1024 * 1024) throw new Error('Hook 行超过 4 MiB，未推进游标');
+      if (!end && bytesRead === 4 * 1024 * 1024) throw new Error('Hook line exceeds 4 MiB; cursor was not advanced');
       const events = buffer.subarray(0, end).toString('utf8').split('\n').filter(Boolean).map(line => JSON.parse(line));
       this.transaction(() => {
         for (const event of events) {
@@ -51,7 +51,7 @@ export class SidecarStore {
           const digest = createHash('sha256').update(JSON.stringify(event)).digest('hex');
           if (!this.db.prepare('INSERT OR IGNORE INTO hook_events VALUES (?)').run(digest).changes) continue;
           const old = this.db.prepare('SELECT * FROM sessions WHERE id = ?').get(event.session_id);
-          if (old && (old.path !== event.transcript_path || old.mode !== event.contentMode)) { this.fault(event.session_id, 'Session 路径或正文模式变化，已暂停'); continue; }
+          if (old && (old.path !== event.transcript_path || old.mode !== event.contentMode)) { this.fault(event.session_id, 'Session path or content mode changed; processing paused'); continue; }
           const activity = reduceActivity(old ? JSON.parse(old.activity) : undefined, event);
           this.db.prepare(`INSERT INTO sessions VALUES (?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET activity = excluded.activity`)
             .run(event.session_id, event.transcript_path, event.contentMode || 'metadata', JSON.stringify(activity));

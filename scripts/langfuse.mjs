@@ -17,15 +17,15 @@ export function selectSession(batches, sessionId, { allowIncomplete = false } = 
   const traceIds = new Set(spans.filter(span => (allowIncomplete ? !!span.attributes['span.type'] : span.attributes['span.type'] === 'interaction')
     && span.attributes['langfuse.session.id'] === sessionId
     && span.attributes['workbuddy.langfuse.source'] !== 'synthetic').map(span => span.traceId));
-  if (!traceIds.size) throw new Error('指定 Session 没有可发送的已完成原生 span。');
+  if (!traceIds.size) throw new Error('No completed native spans are available for this session.');
   const selected = new Map();
   for (const batch of batches) {
     for (const resource of batch.resourceSpans || []) for (const scope of resource.scopeSpans || []) for (const span of scope.spans || []) {
       if (!traceIds.has(span.traceId)) continue;
       const attrs = attributes(span.attributes);
-      if (attrs['langfuse.session.id'] !== sessionId || attrs['workbuddy.langfuse.session.conflict']) throw new Error('Session 关联缺失或冲突，停止上传。');
+      if (attrs['langfuse.session.id'] !== sessionId || attrs['workbuddy.langfuse.session.conflict']) throw new Error('Session association is missing or conflicting; upload stopped.');
       if (!span.startTimeUnixNano || !span.endTimeUnixNano || BigInt(span.endTimeUnixNano) <= 0n
-        || BigInt(span.endTimeUnixNano) < BigInt(span.startTimeUnixNano)) throw new Error('span 尚未结束或时间无效。');
+        || BigInt(span.endTimeUnixNano) < BigInt(span.startTimeUnixNano)) throw new Error('Span is unfinished or has invalid timestamps.');
       const payload = structuredClone({ resourceSpans: [{ ...resource, scopeSpans: [{ ...scope, spans: [span] }] }] });
       // WorkBuddy interaction starts a new trace but can retain an unexported outer parent.
       // Make that explicit trace boundary a root; preserve the native parent as metadata.
@@ -40,13 +40,13 @@ export function selectSession(batches, sessionId, { allowIncomplete = false } = 
         { key: 'langfuse.observation.metadata.source', value: { stringValue: 'workbuddy-native-otel' } },
       );
       const key = identity(span), digest = hash(JSON.stringify(payload));
-      if (selected.has(key) && selected.get(key).digest !== digest) throw new Error('同一 span ID 出现不同内容，停止上传。');
+      if (selected.has(key) && selected.get(key).digest !== digest) throw new Error('The same span ID has different content; upload stopped.');
       selected.set(key, { key, digest, payload });
     }
   }
   for (const { payload } of selected.values()) {
     const span = spanOf(payload);
-    if (!allowIncomplete && span.parentSpanId && !/^0+$/.test(span.parentSpanId) && !selected.has(`${span.traceId}:${span.parentSpanId}`)) throw new Error('父 span 尚未收到，停止上传。');
+    if (!allowIncomplete && span.parentSpanId && !/^0+$/.test(span.parentSpanId) && !selected.has(`${span.traceId}:${span.parentSpanId}`)) throw new Error('Parent span has not arrived; upload stopped.');
   }
   return [...selected.values()];
 }
@@ -66,8 +66,8 @@ export class DeliveryLedger {
     return records.filter(record => {
       const previous = this.db.prepare('SELECT digest, status FROM deliveries WHERE target = ? AND identity = ?').get(this.target, record.key);
       if (!previous) return true;
-      if (previous.digest !== record.digest) throw new Error('已登记的 span 内容变化，不能覆盖远端记录。');
-      if (previous.status === 'sending' || previous.status === 'uncertain') throw new Error('上次发送结果不确定；先核查 Langfuse，当前不会自动重传。');
+      if (previous.digest !== record.digest) throw new Error('Registered span content changed; remote records cannot be overwritten.');
+      if (previous.status === 'sending' || previous.status === 'uncertain') throw new Error('Previous delivery is uncertain. Check Langfuse before retrying; automatic replay is blocked.');
       return previous.status !== 'accepted';
     });
   }
@@ -102,7 +102,7 @@ export async function sendRecords(records, ledger, request) {
   const pending = ledger.pending(records);
   if (!pending.length) return 0;
   const body = JSON.stringify({ resourceSpans: pending.flatMap(record => record.payload.resourceSpans) });
-  if (pending.length > 1000 || Buffer.byteLength(body) > 4 * 1024 * 1024) throw new Error('当前阶段支持一次最多 1000 个 span、4 MiB；本次未发送。');
+  if (pending.length > 1000 || Buffer.byteLength(body) > 4 * 1024 * 1024) throw new Error('A manual batch supports at most 1000 spans and 4 MiB. Nothing was sent.');
   const reserved = ledger.reserve(pending);
   if (!reserved.length) return 0;
   // Rebuild after the transactional reservation in case a concurrent uploader finished first.
@@ -117,18 +117,18 @@ export async function sendRecords(records, ledger, request) {
     // A refused connection/DNS failure occurs before sending any HTTP body; other failures are ambiguous.
     const unsent = ['ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN'].includes(error.cause?.code || error.code);
     ledger.finish(reserved, unsent ? 'rejected' : 'uncertain');
-    throw new Error(unsent ? '连接未建立；记录保留，稍后重试。' : '网络响应不确定；已阻止自动重传，请先核查远端。');
+    throw new Error(unsent ? 'Connection was not established. Records are retained for retry.' : 'Network response is uncertain. Automatic replay is blocked; check remote records first.');
   }
   if (!response.ok) {
     ledger.finish(reserved, [400, 401, 403, 404, 413, 415].includes(response.status) ? 'rejected' : 'uncertain');
-    throw new Error(`Langfuse 返回 HTTP ${response.status}；发送状态已保留。`);
+    throw new Error(`Langfuse returned HTTP ${response.status}; delivery state was retained.`);
   }
   try {
     const result = await response.json();
     if (Number(result.partialSuccess?.rejectedSpans || 0) > 0) throw new Error('partial rejection');
   } catch {
     ledger.finish(reserved, 'uncertain');
-    throw new Error('Langfuse 响应无法完整确认；已阻止自动重传。');
+    throw new Error('Langfuse response did not fully confirm acceptance; automatic replay is blocked.');
   }
   ledger.finish(reserved, 'accepted');
   return reserved.length;
@@ -136,7 +136,7 @@ export async function sendRecords(records, ledger, request) {
 
 export function langfuseConfig(config = readConfig()) {
   const baseUrl = new URL(config.base_url);
-  if (!config.public_key || !config.secret_key) throw new Error('尚未配置项目密钥，请打开“配置 Langfuse.command”或运行 workbuddy-langfuse configure。');
+  if (!config.public_key || !config.secret_key) throw new Error('Project API keys are missing. Run langfuse-helper workbuddy configure.');
   const base = baseUrl.href.replace(/\/$/, '');
   const auth = `Basic ${Buffer.from(`${config.public_key}:${config.secret_key}`).toString('base64')}`;
   return { base, request: (path, options = {}) => fetch(`${base}${path}`, { ...options, redirect: 'error',
@@ -145,17 +145,17 @@ export function langfuseConfig(config = readConfig()) {
 
 async function main() {
   const [sessionId, option] = process.argv.slice(2);
-  if (!sessionId || (option && option !== '--send')) throw new Error('用法：npm run langfuse:upload -- <Session ID> [--send]');
+  if (!sessionId || (option && option !== '--send')) throw new Error('Usage: langfuse-helper workbuddy export <session-id> [--send]');
   const preview = await readPreview(resolve(local, 'collector'));
   const records = await enrichSession(selectSession(preview.batches, sessionId), sessionId);
   const summary = summarize(spansFrom(records.map(record => record.payload)));
-  if (!option) { console.log(JSON.stringify({ mode: 'preview', sessionId, ...summary, note: '本次未连接或上传 Langfuse；加 --send 才发送。仅选择已结束的主 Trace。' }, null, 2)); return; }
-  if (!readConfig().enabled) throw new Error('采集已关闭，请先通过配置向导启用。');
+  if (!option) { console.log(JSON.stringify({ mode: 'preview', sessionId, ...summary, note: 'Local preview only. Use --send to upload. Only completed main traces are selected.' }, null, 2)); return; }
+  if (!readConfig().enabled) throw new Error('Capture is disabled. Run langfuse-helper workbuddy configure to enable it.');
   const { base, request } = langfuseConfig();
   const response = await request('/api/public/projects');
-  if (!response.ok) throw new Error(`Langfuse 项目认证失败（HTTP ${response.status}）。`);
+  if (!response.ok) throw new Error(`Langfuse project authentication failed (HTTP ${response.status}).`);
   const projects = (await response.json()).data;
-  if (projects?.length !== 1 || !projects[0].id) throw new Error('必须使用单个 Langfuse 项目的密钥。');
+  if (projects?.length !== 1 || !projects[0].id) throw new Error('Use API keys for exactly one Langfuse project.');
   await prepare();
   const ledger = new DeliveryLedger(resolve(local, 'langfuse-deliveries.sqlite'), `${base}/${projects[0].id}`);
   try {
@@ -164,7 +164,7 @@ async function main() {
     }));
     console.log(JSON.stringify({ sessionId, project: projects[0].name, uploaded, skipped: records.length - uploaded,
       sessionUrl: `${base}/project/${projects[0].id}/sessions/${encodeURIComponent(sessionId)}`,
-      note: 'HTTP 接收确认；实际入库请运行 langfuse:verify。请保留发送账本，结果不确定时不会自动重传。' }, null, 2));
+      note: 'HTTP acceptance confirmed. Use langfuse-helper workbuddy verify to check stored records. Retain the ledger; uncertain deliveries are not automatically replayed.' }, null, 2));
   } finally { ledger.close(); }
 }
 

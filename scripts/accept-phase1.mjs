@@ -6,7 +6,7 @@ import { readPreview } from './preview.mjs';
 
 try {
   const sessionId = process.argv[2];
-  if (!sessionId) throw new Error('用法：npm run accept:phase1 -- <WorkBuddy Session ID>');
+  if (!sessionId) throw new Error('Usage: npm run accept:phase1 -- <workbuddy-session-id>');
   const [preview, hooks] = await Promise.all([
     readPreview(join(local, 'collector')),
     readJsonLines(join(dataDir, 'hooks.jsonl')),

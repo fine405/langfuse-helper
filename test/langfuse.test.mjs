@@ -30,10 +30,10 @@ test('session selection preserves child hierarchy, makes external interaction bo
   assert.equal(selectSession([...batches, ...batches], sessionId).length, 2);
   const child = batches[0].resourceSpans[0].scopeSpans[0].spans[1];
   child.parentSpanId = '3'.repeat(16);
-  assert.throws(() => selectSession(batches, sessionId), /父 span/);
+  assert.throws(() => selectSession(batches, sessionId), /Parent span/);
   child.parentSpanId = '1'.repeat(16);
   child.attributes.push({ key: 'workbuddy.langfuse.session.conflict', value: { stringValue: 'true' } });
-  assert.throws(() => selectSession(batches, sessionId), /冲突/);
+  assert.throws(() => selectSession(batches, sessionId), /conflicting/);
 });
 
 test('acknowledged delivery survives restart; project identity scopes the ledger', async () => {
@@ -47,7 +47,7 @@ test('acknowledged delivery survives restart; project identity scopes the ledger
     ledger.close(); ledger = new DeliveryLedger(file, 'project-1');
     assert.equal(await sendRecords(records, ledger, request), 0);
     assert.equal(requests, 1);
-    assert.throws(() => ledger.pending([{ ...records[0], digest: 'changed' }]), /内容变化/);
+    assert.throws(() => ledger.pending([{ ...records[0], digest: 'changed' }]), /content changed/);
     ledger.close(); ledger = new DeliveryLedger(file, 'project-2');
     assert.equal(ledger.pending(records).length, 2);
   } finally { ledger.close(); rmSync(directory, { recursive: true }); }
@@ -63,7 +63,7 @@ test('network ambiguity, partial rejection and crashed reservations block retry;
       ['server', async () => new Response('', { status: 500 })],
     ]) {
       const ledger = new DeliveryLedger(join(directory, `${name}.sqlite`), 'project');
-      try { await assert.rejects(sendRecords(records, ledger, request)); assert.throws(() => ledger.pending(records), /不确定/); }
+      try { await assert.rejects(sendRecords(records, ledger, request)); assert.throws(() => ledger.pending(records), /uncertain/); }
       finally { ledger.close(); }
     }
     const ledger = new DeliveryLedger(join(directory, 'auth.sqlite'), 'project');
@@ -71,7 +71,7 @@ test('network ambiguity, partial rejection and crashed reservations block retry;
       await assert.rejects(sendRecords(records, ledger, async () => new Response('', { status: 401 })), /401/);
       assert.equal(ledger.pending(records).length, 2);
       ledger.reserve(records);
-      assert.throws(() => ledger.pending(records), /不确定/);
+      assert.throws(() => ledger.pending(records), /uncertain/);
     } finally { ledger.close(); }
   } finally { rmSync(directory, { recursive: true }); }
 });

@@ -33,5 +33,5 @@ export function assessPhase1(allSpans, allHooks, sessionId) {
   return { sessionId, passed: Object.values(checks).every(Boolean), checks, summary, traceIds,
     hookCounts, toolDurationsMs,
     missingSessionByType: spans.filter(span => !span.attributes['langfuse.session.id']).map(span => span.attributes['span.type']),
-    note: '只检查指定会话的两轮主 Trace；模拟和辅助 Trace 不充当验收证据。用量缺失仍表示未知。' };
+    note: 'Checks two main traces in the selected session. Synthetic and auxiliary traces are excluded. Missing usage remains unknown.' };
 }

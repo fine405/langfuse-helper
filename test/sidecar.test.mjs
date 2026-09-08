@@ -106,7 +106,7 @@ test('ambiguous accepted delivery reconciles by exact remote ID and digest, whil
     const query = async () => Response.json({ data: remote });
     const accepted = remote;
     remote = []; assert.equal((await reconcileDeliveries(ledger, query))[0].status, 'unconfirmed');
-    assert.throws(() => ledger.pending(selected), /不确定/);
+    assert.throws(() => ledger.pending(selected), /uncertain/);
     remote = [...accepted, ...accepted]; assert.equal((await reconcileDeliveries(ledger, query))[0].status, 'conflict');
     remote = [{ ...accepted[0], metadata: { deliveryDigest: 'wrong' } }]; assert.equal((await reconcileDeliveries(ledger, query))[0].status, 'conflict');
     remote = accepted; assert.equal((await reconcileDeliveries(ledger, query))[0].status, 'accepted');

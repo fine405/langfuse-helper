@@ -1,6 +1,6 @@
 {
-  "name": "workbuddy-langfuse-plugin",
-  "version": "0.5.0",
+  "name": "langfuse-helper",
+  "version": "0.6.0",
   "private": true,
   "type": "module",
   "engines": {
@@ -28,11 +28,29 @@
     "service:status": "node scripts/sidecar.mjs status",
     "service:foreground": "node scripts/sidecar.mjs serve",
     "recover": "node scripts/recovery.mjs",
-    "configure": "node scripts/setup.mjs configure",
-    "start": "node scripts/setup.mjs start",
-    "stop": "node scripts/setup.mjs stop",
-    "install:local": "node scripts/install.mjs",
+    "configure": "node bin/langfuse-helper.mjs workbuddy configure",
+    "start": "node bin/langfuse-helper.mjs workbuddy start",
+    "stop": "node bin/langfuse-helper.mjs workbuddy stop",
     "package": "node scripts/package.mjs",
-    "app:status": "node scripts/setup.mjs status"
+    "app:status": "node bin/langfuse-helper.mjs workbuddy status"
+  },
+  "description": "Langfuse integration CLI for AI agents, with WorkBuddy support",
+  "bin": {
+    "langfuse-helper": "bin/langfuse-helper.mjs"
+  },
+  "files": [
+    "bin/",
+    "scripts/",
+    "collector/",
+    "plugins/",
+    ".codebuddy-plugin/",
+    "docs/"
+  ],
+  "os": [
+    "darwin"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fine405/workbuddy-langfuse-plugin.git"
   }
 }

@@ -16,9 +16,9 @@ function readObject(path) {
   try { value = JSON.parse(readFileSync(path, 'utf8')); }
   catch (error) {
     if (error.code === 'ENOENT') return null;
-    throw new Error(`配置文件无法读取或 JSON 格式错误：${path}`);
+    throw new Error(`Could not read configuration or parse JSON: ${path}`);
   }
-  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(`配置必须是 JSON 对象：${path}`);
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(`Configuration must be a JSON object: ${path}`);
   return value;
 }
 
@@ -33,19 +33,19 @@ export function validateSettings(settings) {
 
 export function validateConfig(config) {
   validateSettings(config);
-  if (typeof config.enabled !== 'boolean') throw new Error('enabled 必须为 true 或 false');
+  if (typeof config.enabled !== 'boolean') throw new Error('enabled must be true or false');
   let url;
-  try { url = new URL(config.base_url); } catch { throw new Error('Langfuse 地址无效'); }
+  try { url = new URL(config.base_url); } catch { throw new Error('Invalid Langfuse URL'); }
   if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash || url.pathname !== '/') {
-    throw new Error('请填写 Langfuse 基础地址，不包含 /api、项目路径、用户名或密码');
+    throw new Error('Use the Langfuse base URL without /api, project paths, credentials, query parameters or fragments');
   }
   for (const key of ['public_key', 'secret_key']) {
-    if (typeof config[key] !== 'string' || (config[key] && !/^[A-Za-z0-9_-]+$/.test(config[key]))) throw new Error(`${key} 格式无效`);
+    if (typeof config[key] !== 'string' || (config[key] && !/^[A-Za-z0-9_-]+$/.test(config[key]))) throw new Error(`${key} has an invalid format`);
   }
   for (const key of ['organization_name', 'project_name']) {
-    if (typeof config[key] !== 'string' || !config[key].trim() || /[\x00-\x1f\x7f]/.test(config[key])) throw new Error(`${key} 必须是非空名称`);
+    if (typeof config[key] !== 'string' || !config[key].trim() || /[\x00-\x1f\x7f]/.test(config[key])) throw new Error(`${key} must be a non-empty name`);
   }
-  if (config.data_directory && (typeof config.data_directory !== 'string' || !isAbsolute(config.data_directory))) throw new Error('data_directory 必须为绝对路径');
+  if (config.data_directory && (typeof config.data_directory !== 'string' || !isAbsolute(config.data_directory))) throw new Error('data_directory must be an absolute path');
   return { ...config, base_url: url.origin };
 }
 
@@ -55,7 +55,7 @@ export function readConfig({ file = configPath, env = process.env } = {}) {
     organization_name: 'Personal', project_name: 'WorkBuddy', ...saved };
   for (const prefix of ['LANGFUSE_', 'WORKBUDDY_LANGFUSE_']) {
     const publicKey = env[`${prefix}PUBLIC_KEY`], secretKey = env[`${prefix}SECRET_KEY`];
-    if ((publicKey !== undefined) !== (secretKey !== undefined)) throw new Error(`${prefix}PUBLIC_KEY 和 SECRET_KEY 必须成对设置`);
+    if ((publicKey !== undefined) !== (secretKey !== undefined)) throw new Error(`${prefix}PUBLIC_KEY and SECRET_KEY must be set together`);
     if (publicKey !== undefined) {
       config.public_key = publicKey; config.secret_key = secretKey;
     }

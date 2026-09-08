@@ -19,20 +19,20 @@ flowchart LR
 
 ## 安装、配置与启动
 
-安装器将程序复制到固定的用户目录，创建命令行和可双击的操作入口。程序、配置和运行数据分别保存：
+npm 全局安装管理程序文件和 CLI 命令链接，`langfuse-helper workbuddy` 根据子命令调用配置、启动、诊断或恢复流程。程序、配置和运行数据分别保存：
 
 | 内容 | 默认位置与职责 |
 |---|---|
-| 程序 | `~/.workbuddy/langfuse-plugin/app/`，包含 Hook 插件、Collector 配置及上报服务 |
+| 程序 | npm 全局目录中的 `langfuse-helper`，包含 Hook 插件、Collector 配置及上报服务 |
 | 用户配置 | `~/.workbuddy/langfuse.json`，保存连接、密钥、采集开关、正文模式和运行设置 |
 | 运行数据 | `~/.workbuddy/langfuse-plugin/state/`，保存关联结果、读取游标、待发送记录和发送账本 |
-| 操作入口 | `~/Applications/WorkBuddy Langfuse/` 和 `~/.local/bin/workbuddy-langfuse` |
+| 操作入口 | npm 全局前缀中的 `bin/langfuse-helper` |
 
 配置向导提供组织与项目的创建指引，使用项目密钥查询实际项目。密钥由本地上报服务持有，启动 WorkBuddy 时不传入密钥。向导以原子替换方式保存权限为 0600 的配置文件，认证失败或项目与现有账本冲突时不覆盖原配置。
 
 启动入口先检查 WorkBuddy 已退出、配置已启用、发送目标与端口可用，再安装 Hook 插件、启动 Collector 和上报服务，最后带原生遥测设置打开 WorkBuddy。配置在进程启动时读取，正文模式按 Session 固定；更改后需要重新启动接入并新建任务。具体操作见[接入指南](../users/getting-started.md)。
 
-更新替换程序文件，保留用户配置与运行数据。卸载移除插件、程序和操作入口，保留配置、队列与发送账本。保留发送身份是后续重启或重新安装时避免重复发送的基础。
+更新前先停止 WorkBuddy 与采集，再由 npm 替换程序文件，保留用户配置与运行数据。`uninstall` 子命令停止采集并移除 Hook 插件，随后 `npm uninstall -g langfuse-helper` 移除 CLI；配置、队列与发送账本保留。保留发送身份是后续重启或重新安装时避免重复发送的基础。
 
 ## 三条本地输入汇合
 
@@ -126,7 +126,7 @@ sequenceDiagram
 
 | 入口 | 职责 |
 |---|---|
-| [install.mjs](../../scripts/install.mjs) | 安装程序、创建操作入口及更新和卸载 |
+| [langfuse-helper.mjs](../../bin/langfuse-helper.mjs) | agent 命令入口、帮助与参数校验；程序安装和更新由 npm 管理 |
 | [settings.mjs](../../scripts/settings.mjs) · [wizard.mjs](../../scripts/wizard.mjs) | 统一配置读取、校验与交互问题 |
 | [setup.mjs](../../scripts/setup.mjs) | 项目认证、启动、配置和状态展示 |
 | [WorkBuddy 插件](../../plugins/workbuddy-langfuse) | Hook 事件声明与本地通知 |

@@ -35,8 +35,8 @@ async function exists(path) { try { await access(path); return true; } catch { r
 
 export function requireWorkBuddyClosed() {
   const processes = spawnSync('ps', ['-axo', 'comm='], { encoding: 'utf8' });
-  if (processes.status !== 0) throw new Error('无法确认 WorkBuddy 是否已退出。');
-  if (processes.stdout.split('\n').some(line => line.trim() === executable)) throw new Error('请先完全退出 WorkBuddy，再运行此命令；不会中断现有任务。');
+  if (processes.status !== 0) throw new Error('Could not determine whether WorkBuddy has exited.');
+  if (processes.stdout.split('\n').some(line => line.trim() === executable)) throw new Error('Quit WorkBuddy completely before running this command. Existing tasks will not be interrupted.');
 }
 
 async function waitForCollector() {
@@ -47,7 +47,7 @@ async function waitForCollector() {
     } catch {}
     await delay(200);
   }
-  throw new Error('Collector 尚未就绪，请检查 Docker 日志后重试。');
+  throw new Error('Collector is not ready. Check Docker logs and retry.');
 }
 
 export async function sendDemo(targetPort = port, payload = demoPayload()) {
@@ -75,7 +75,7 @@ async function main(command) {
       if (!checks.nodeSupported || !checks.workbuddyFound || !checks.dockerReady) process.exitCode = 1;
       break;
     }
-    case 'collector:start': await prepare(); compose(['up', '-d', '--force-recreate']); await waitForCollector(); console.log('本地 Collector 与 Session 关联器已就绪。'); break;
+    case 'collector:start': await prepare(); compose(['up', '-d', '--force-recreate']); await waitForCollector(); console.log('Local Collector and session correlator are ready.'); break;
     case 'collector:stop': compose(['down']); break;
     case 'plugin:install':
     case 'plugin:uninstall': {
@@ -84,10 +84,10 @@ async function main(command) {
         if (command === 'plugin:install') await installPlugin(request, root);
         else await request('/plugins/uninstall', { plugin: pluginId });
       });
-      console.log(command === 'plugin:install' ? '插件已安装或更新，并核对实际文件；通过 npm start 启动后记录 Hook。' : '本插件已卸载。');
+      console.log(command === 'plugin:install' ? 'Plugin installed or updated and verified. Run langfuse-helper workbuddy start to enable capture.' : 'WorkBuddy plugin removed.');
       break;
     }
-    case 'demo': console.log(JSON.stringify({ syntheticTraceId: (await sendDemo()).traceId, note: '模拟数据；请稍后运行 npm run status。未上传 Langfuse。' }, null, 2)); break;
+    case 'demo': console.log(JSON.stringify({ syntheticTraceId: (await sendDemo()).traceId, note: 'Synthetic data. Run langfuse-helper workbuddy diagnose to inspect it. Nothing was uploaded to Langfuse.' }, null, 2)); break;
     case 'preview:export': {
       const preview = await readPreview(join(local, 'collector'));
       for (const batch of preview.batches) console.log(JSON.stringify(batch));
@@ -102,14 +102,14 @@ async function main(command) {
       const hookCounts = {};
       for (const hook of hooks.filter(hook => hook.source !== 'synthetic')) hookCounts[hook.hook_event_name] = (hookCounts[hook.hook_event_name] || 0) + 1;
       console.log(JSON.stringify({ storage: preview.storage, correlation: preview.states, native: summarize(native), synthetic: summarize(synthetic), hooks: hookCounts,
-        note: '诊断统计保留重复记录用于发现问题；不是去重上报器。usage 缺失表示未知。' }, null, 2));
+        note: 'Diagnostics retain duplicate arrivals for inspection. These are not delivery counts. Missing usage is unknown.' }, null, 2));
       break;
     }
     case 'launch': {
       requireWorkBuddyClosed();
       await prepare();
       const settings = readConfig();
-      if (!settings.enabled) throw new Error('采集已关闭，请先通过配置向导启用。');
+      if (!settings.enabled) throw new Error('Capture is disabled. Run langfuse-helper workbuddy configure to enable it.');
       const env = { ...process.env, CODEBUDDY_CODE_ENABLE_TELEMETRY: '1', OTEL_TRACES_EXPORTER: 'otlp',
         OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: `http://127.0.0.1:${port}/v1/traces`, OTEL_EXPORTER_OTLP_TRACES_PROTOCOL: 'http/protobuf',
         OTEL_SERVICE_NAME: 'workbuddy', OTEL_SEMCONV: 'agentlens',
@@ -125,12 +125,12 @@ async function main(command) {
       delete env.LANGFUSE_SECRET_KEY;
       delete env.WORKBUDDY_LANGFUSE_PUBLIC_KEY;
       delete env.WORKBUDDY_LANGFUSE_SECRET_KEY;
-      if (env.DISABLE_TELEMETRY || env.OTEL_SDK_DISABLED === 'true') throw new Error('当前环境已禁用遥测，请先检查 DISABLE_TELEMETRY / OTEL_SDK_DISABLED。');
+      if (env.DISABLE_TELEMETRY || env.OTEL_SDK_DISABLED === 'true') throw new Error('Telemetry is disabled in this environment. Check DISABLE_TELEMETRY / OTEL_SDK_DISABLED.');
       const log = await open(join(local, 'workbuddy-startup.log'), 'a', 0o600);
       const child = spawn(executable, [], { detached: true, stdio: ['ignore', log.fd, log.fd], env });
       await new Promise((resolve, reject) => { child.once('spawn', resolve); child.once('error', reject); });
       child.unref(); await log.close();
-      console.log('WorkBuddy 已通过采集入口启动。新建无敏感信息的测试任务，然后运行 npm run service:status。');
+      console.log('WorkBuddy started with capture enabled. Create a new task, then run langfuse-helper workbuddy status.');
       break;
     }
     default: throw new Error('Unknown command. Use an npm script listed in README.md.');
