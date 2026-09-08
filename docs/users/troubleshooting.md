@@ -1,66 +1,95 @@
 # 排障与恢复
 
-先运行 `langfuse-helper workbuddy status`，查看连接、上报状态和异常。修改连接参数请使用 `langfuse-helper workbuddy configure`。
+先运行对应 agent 的 `status` 与 `doctor`。不要删除配置、账本或队列来处理重复记录。
 
-所有命令都可以在任意目录执行。`langfuse-helper workbuddy doctor` 检查环境，`langfuse-helper workbuddy status --json` 查看完整队列和错误，`langfuse-helper workbuddy diagnose` 查看底层到达统计。不要先删除数据库。
+```bash
+langfuse-helper agents
+langfuse-helper targets
+langfuse-helper workbuddy status
+langfuse-helper codex status
+```
 
-## 常见情况
+## 发现、配置与安装
 
-| 现象 | 检查与处理 |
+| 现象 | 处理 |
 |---|---|
-| 普通图标启动后没有新数据 | 退出 WorkBuddy，通过 `langfuse-helper workbuddy start` 重开。插件持久安装不等于本次进程启用了采集 |
-| 只有 synthetic，没有自己的任务 | synthetic 是模拟记录。检查 Hook 新事件、新 Session 与原生 interaction；新建任务后查看对应 Session |
-| service.json 不存在/连接拒绝 | 服务未运行，使用 `langfuse-helper workbuddy start` 启动完整接入；用 `langfuse-helper workbuddy serve` 前台运行上报服务以查看错误，Ctrl+C 退出 |
-| WorkBuddy 未完全退出 | 从应用菜单退出；启动脚本不会强制结束现有任务 |
-| 插件文件 stale | 更新命令使用内置插件 API 并核对文件；退出 WorkBuddy、运行 `langfuse-helper workbuddy stop`，用 npm 更新后重新 `start` |
-| queue 暂时增加 | 可能是网络不可达或 Langfuse 拒绝。查看 faults，通过配置向导修正地址或项目密钥，然后重新启动接入 |
-| waitingForNativeOrTranscript 有 ready | 可能在等最终任务记录，也可能是尚无原生任务步骤锚点的后台 Trace；队列为空且主任务 verify 通过时，辅助记录不需要强行上传 |
-| pending / unassociated | 等原生 Session 锚点，或 WorkBuddy 辅助 span 没有主任务归属；不代表这些辅助记录都应上传 |
-| 原生 ID 内容变化 | 编辑、重生成或价格/正文变化影响了已冻结记录，已隔离；不要删账本强行覆盖 |
-| 任务路径或正文模式变化 | 当前 Session 已登记原设置。恢复设置继续，或用新任务应用新模式 |
-| Token 未知或缓存校验失败 | 保留未知，不填零；核对当前 WorkBuddy/模型的数据格式是否已变化 |
-| Trace 页面一直停留在早期记录 | 页面可能没有自动刷新，刷新后再核对完整树；这与 API 入库可见性分开判断 |
-| Langfuse 一开始缺少父节点 | 子 span 可先到，根到整轮结束才导出；待入库后用 verify 核对完整结构 |
-| 运行状态 quiet | 只是未见新活动；长工具、模型等待都可能出现，不等于错误 |
+| agent 未出现在交互菜单 | 检查 `agents` 的 detected、supported、runnable；发现未支持的 CLI 不会提供启动按钮 |
+| 应用在自定义目录 | 使用 `WORKBUDDY_APP_PATH`、`CODEX_APP_PATH`；Codex 可用 `LANGFUSE_HELPER_CODEX_BIN` 指定可执行文件 |
+| 没有 verified target | 先运行 `langfuse-helper <agent> configure` |
+| JSON 错误 | 检查 `~/.langfuse-helper/config.json`；不要把含密钥的文件粘贴到问题报告中 |
+| 密钥验证失败 | 填写项目密钥对及所属区域的基础 URL；输入 Org/Project 名称不会改变密钥归属 |
+| target 已属于其他项目 | 新建 target 名称；同名目标不能换投另一 Project |
+| 已有 Codex 上游 tracing 扩展 | 在 Codex Plugins 中禁用该扩展，再安装 helper 扩展，避免双重发送 |
+| Codex marketplace 指向其他目录 | 先通过 `codex plugin marketplace list` 核对注册；仅移除已确认过时的那条注册后再 `codex install`。helper 不覆盖其他 marketplace |
+| 找不到 langfuse-helper 命令 | 检查 `npm config get prefix` 对应的 `bin` 是否在 PATH 中，重开终端 |
 
-## 配置与安装问题
+## Codex 没有数据
 
-- 通过配置向导修改 `~/.workbuddy/langfuse.json`；修改后重新启动接入使设置生效。
-- 提示 JSON 错误时，检查文件语法；错误提示不会打印密钥。
-- 提示项目与账本不匹配时，原配置保持不变。请核对项目密钥，不要清空账本。
-- 更新前先退出 WorkBuddy 并运行 `langfuse-helper workbuddy stop`；npm 不会自动停止运行中的服务。
-- npm 提示权限不足时，使用当前用户可写的 Node.js/npm 安装位置；不要用强制覆盖来处理未知的同名命令。
-- 找不到命令时，运行 `npm config get prefix`，确认该目录下的 `bin` 已加入 PATH，然后重新打开终端。运行 `command -v langfuse-helper` 确认命令位置。
+按顺序检查：
 
-## 不确定发送
+1. `codex status` 中 enabled 是否为 true，插件是否已安装且 enabled。
+2. 在新 Codex 任务的 `/hooks` 中确认 Stop hook 已审阅并信任。安装或更新不会自动代替这一步。
+3. Hook 执行环境是否能找到 Node.js 24+。终端启动由 helper 补充当前 Node 的目录；已打开的桌面应用不会继承新终端环境，必要时退出后重新启动。
+4. 完成一轮，再检查 `lastRun` 和 deliveries。Codex 按轮次结束上报，不显示 WorkBuddy 式的持续活动状态。
+5. 更换 target 后新建任务。提示任务属于其他目标时，选回原 target 处理旧任务。
+6. 子任务尚未完成或文件尚未出现时，等全部结束再通过下述 export 重试。
 
 ```bash
-langfuse-helper workbuddy recover
+langfuse-helper codex export /absolute/path/to/rollout.jsonl
+langfuse-helper codex export /absolute/path/to/rollout.jsonl --send
 ```
 
-该命令只查询当前项目。结果为 accepted 时已找到恰好一条相同 ID、相同 deliveryDigest 的记录，会更新账本且不重发；unconfirmed 保留；conflict 需要人工核查重复 ID 或数据变化。
+无 `--send` 只显示摘要，不写任务绑定或账本。首次处理从最后一个完成轮开始；已有任务使用固定采集边界。它不是导入整个历史目录的命令。开始前须启用 Codex 采集。
 
-如果记录始终 unconfirmed，先核实 Langfuse 服务健康、异步处理队列已消化、查询项目和 trace ID 正确。短暂查不到不足以证明请求失败。只有你已确认未入库、愿意承担延迟入库导致重复的剩余风险时，才显式释放单条记录：
+文件中完整行损坏会停止导出；写入中的末尾半行可以等待补齐。已确认的父轮使用当时的完整子任务树作为快照，之后新产生的子任务轮次不会追补到该父轮。
+
+## WorkBuddy 没有数据或状态不完整
+
+| 现象 | 处理 |
+|---|---|
+| 普通图标启动后没有数据 | 完全退出，通过 `langfuse-helper workbuddy start` 重开 |
+| WorkBuddy 未完全退出 | 从应用菜单退出；helper 不强制结束现有任务 |
+| 服务未运行或 service.json 不存在 | 运行 `start`；高级排障可用 `serve` 前台运行发送服务 |
+| Docker 尚未就绪 | 完成 Docker Desktop 首次启动提示后重试 |
+| 端口被占用 | 停止占用端口的原接入；不要把另一目标的服务当成当前服务 |
+| queue 增加或 faults 出现 | 检查网络、Langfuse 拒绝原因及目标密钥；修改配置后重启 |
+| waitingForNativeOrTranscript | 等原生 Session 锚点或完整任务记录；没有主任务归属的辅助 Trace 不会强行上传 |
+| 子节点先出现，父节点稍后到达 | 完成整轮并等待 Langfuse 入库后刷新；可用 verify 核对 |
+| quiet | 只表示一段时间没有新活动，不代表模型或工具已经失败 |
+| 内容、Session 或摘要冲突 | 保留现场，恢复原设置或新建任务；不能清空账本强行覆盖 |
 
 ```bash
-langfuse-helper workbuddy recover --retry-confirmed-absent <trace-id:span-id>
-```
-
-脚本会再次查询，且拒绝释放未满 5 分钟或有冲突的记录。释放后服务下一次发送周期重试。保留发送账本和核查记录；不要批量删库或盲目重传全部 Session。
-
-## 手动预览和入库核对
-
-```bash
+langfuse-helper workbuddy status --json
+langfuse-helper workbuddy diagnose
 langfuse-helper workbuddy export <session-id>
 langfuse-helper workbuddy verify <session-id>
 ```
 
-第一个命令只做本地预览。历史任务需要人工选定并发送时才加 `--send`；它与自动发送共用账本。自动模式只登记启用后的任务，不自动回灌全部历史。verify 查询每个 Trace 的实际 observation，核对 ID、层级、时间、用量和正文等字段。
+`status --json` 查询正在运行的服务，未运行返回非零。`diagnose` 的重复到达统计不是发送次数。`verify` 查询实际入库 observation，核对 ID、父子关系、时间、用量和正文。
 
-## 本地数据损坏或目标变更
+## 不确定发送
 
-SQLite 错误、摘要冲突、Session 冲突都应保留现场。停止本地服务后备份数据，再分析错误，不要通过清空队列隐藏问题。不要把 A 项目的队列直接换密钥发送到 B 项目；为新项目配置独立的数据目录，或先完成 A 项目的恢复核对。
+两个 agent 都支持：
 
-Collector 在原生 SDK 前不可达时，SDK 尚未持久化的记录可能丢失；后续看到缺少 observation 应报告采集缺口，不用猜测时间或正文补造。Hook 写入故障静默返回也可能导致任务未登记；处理写入问题后，新建任务检查是否恢复采集。
+```bash
+langfuse-helper workbuddy recover
+langfuse-helper codex recover
+```
 
-[返回接入指南](getting-started.md) · [文档导航](../README.md)
+命令只查询绑定项目。结果为 accepted 表示找到恰好一条相同 ID、相同 deliveryDigest 的记录，会确认账本而不重发。unconfirmed 保留；conflict 需要核查重复 ID 或摘要变化。Langfuse 异步入库，所以暂时查不到不能证明上传失败。
+
+在确认服务健康、异步队列已消化、项目与 ID 正确后，只有用户确认记录未入库才显式释放单条记录：
+
+```bash
+langfuse-helper codex recover --retry-confirmed-absent <trace-id:span-id>
+```
+
+WorkBuddy 使用相同参数。记录必须至少 5 分钟前产生，且当前查询没有发现匹配或冲突。WorkBuddy 服务随后重试；Codex 在后续 Stop 或显式 export 时继续。不能承诺延迟入库绝不会造成重复，因此不自动批量释放。
+
+## 旧队列、损坏与采集缺口
+
+目标切换后旧队列仍保存在原目标目录。重新绑定原 target 后继续恢复，不将旧 payload 直接换密钥发往新项目。停止进程后再备份和分析 SQLite 错误。
+
+WorkBuddy SDK 未送达 Collector、hook 未执行、Codex 原始 rollout 被删除等问题，都可能造成采集缺口。helper 不编造 observation 来补齐。排障报告只提供已脱敏的状态摘要和版本信息，不直接分享配置、数据库或原始会话文件。
+
+[接入指南](getting-started.md) · [时序图](../architecture/sequences.md)

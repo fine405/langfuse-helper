@@ -1,19 +1,19 @@
 # 文档导航
 
-文档分为用户接入和项目架构两部分。首次使用从接入指南开始。
+## 面向使用者
 
-## 用户接入
+| 文档 | 解决什么问题 |
+|---|---|
+| [安装与日常使用](users/getting-started.md) | 安装 CLI、发现 agent、配置、启动、更新与卸载 |
+| [上报目标与数据隔离](users/targets.md) | 同实例多 Project、共用 Project、独立实例如何选择和配置 |
+| [排障与恢复](users/troubleshooting.md) | hook 未触发、连接失败、不确定发送、数据不完整 |
+
+## 面向架构学习
 
 | 文档 | 内容 |
 |---|---|
-| [接入指南](users/getting-started.md) | 环境准备、配置密钥、启动、正文与价格设置、更新和卸载 |
-| [排障手册](users/troubleshooting.md) | 状态诊断、连接与发送问题、不确定结果恢复、本地数据处理 |
+| [整体架构](architecture/overview.md) | 发现与扩展、控制入口、数据流、存储边界 |
+| [上报与恢复时序](architecture/sequences.md) | 从配置到启动；Codex 重读与去重；WorkBuddy 增量发送；响应丢失恢复 |
+| [字段、费用与正文边界](architecture/data-model.md) | 两种 agent 的映射、Token、价格与隐私模式 |
 
-## 项目架构
-
-| 文档 | 内容 |
-|---|---|
-| [架构、增量读取与恢复](architecture/overview.md) | 安装与启动、配置和数据位置、组件关系、上报时序、重复处理与故障恢复 |
-| [字段、费用与正文边界](architecture/data-model.md) | 原生追踪映射、Token 与缓存、积分与价格、正文范围和活动状态 |
-
-[返回项目首页](../README.md)
+[返回首页](../README.md)

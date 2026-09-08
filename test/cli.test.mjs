@@ -7,14 +7,20 @@ import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { createServer } from 'node:http';
 import { spawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { projectRoot, readConfig, writeConfig } from '../scripts/settings.mjs';
 import { DeliveryLedger } from '../scripts/langfuse.mjs';
 
 async function fixture(t) {
   const directory = await mkdtemp(join(tmpdir(), "wb lf cli ' "));
   t.after(() => rm(directory, { recursive: true, force: true }));
-  const config = join(directory, 'langfuse.json'), state = join(directory, 'state');
-  const env = { ...process.env, WORKBUDDY_CONFIG_DIR: directory, WORKBUDDY_LANGFUSE_CONFIG: config, WORKBUDDY_LANGFUSE_STATE_DIR: state };
+  const config = join(directory, 'langfuse.json'), helper = join(directory, 'helper');
+  const state = join(helper, 'state/workbuddy', createHash('sha256').update('http://127.0.0.1:1/project-test').digest('hex'));
+  await mkdir(helper);
+  await writeFile(join(helper, 'config.json'), JSON.stringify({ version: 1,
+    targets: { workbuddy: { base_url: 'http://127.0.0.1:1', project_id: 'project-test', project_name: 'Test', public_key: 'pk-test', secret_key: 'sk-test' } },
+    agents: { workbuddy: { target: 'workbuddy', enabled: false, content: 'metadata' } } }));
+  const env = { ...process.env, LANGFUSE_HELPER_HOME: helper, WORKBUDDY_CONFIG_DIR: directory, WORKBUDDY_LANGFUSE_CONFIG: config, WORKBUDDY_LANGFUSE_STATE_DIR: state };
   for (const key of Object.keys(env)) if (/^(WORKBUDDY_)?LANGFUSE_(BASE_URL|PUBLIC_KEY|SECRET_KEY)$/.test(key)) delete env[key];
   return { directory, config, state, env };
 }
@@ -28,7 +34,7 @@ function run(command, args, options = {}) {
 test('CLI help and version work without valid configuration; invalid arguments cannot run an action', async t => {
   const f = await fixture(t), executable = join(projectRoot, 'bin/langfuse-helper.mjs');
   await writeFile(f.config, '{"secret_key":"DO_NOT_PRINT_SECRET",');
-  for (const args of [[], ['--help'], ['--version'], ['workbuddy', '--help'], ['workbuddy', 'configure', '--help']]) {
+  for (const args of [[], ['--help'], ['--version'], ['workbuddy', '--help'], ['codex', '--help'], ['agents', '--json'], ['workbuddy', 'configure', '--help']]) {
     const output = run(process.execPath, [executable, ...args], { env: f.env, cwd: tmpdir() });
     assert.doesNotMatch(output, /\p{Script=Han}|DO_NOT_PRINT_SECRET/u);
   }
@@ -38,7 +44,7 @@ test('CLI help and version work without valid configuration; invalid arguments c
     assert.match(result.stderr, /Unknown command|Invalid arguments/);
     assert.doesNotMatch(result.stderr, /DO_NOT_PRINT_SECRET|\p{Script=Han}/u);
   }
-  const unsupported = spawnSync(process.execPath, [executable, 'codex', 'start'], { env: f.env, encoding: 'utf8' });
+  const unsupported = spawnSync(process.execPath, [executable, 'unsupported', 'start'], { env: f.env, encoding: 'utf8' });
   assert.equal(unsupported.status, 1); assert.match(unsupported.stderr, /Unsupported agent/);
   assert.equal(existsSync(f.state), false);
 });
@@ -48,11 +54,12 @@ test('npm package installs globally outside the source, updates and uninstalls w
   const manifest = JSON.parse(await readFile(join(projectRoot, 'package.json'), 'utf8'));
   const packed = JSON.parse(run('npm', ['pack', '--json', '--ignore-scripts', '--pack-destination', f.directory], { cwd: projectRoot }))[0];
   const shipped = packed.files.map(file => file.path);
-  for (const asset of ['bin/langfuse-helper.mjs', 'scripts/setup.mjs', 'collector/compose.yaml', 'collector/correlator.mjs', '.codebuddy-plugin/marketplace.json', 'plugins/workbuddy-langfuse/hooks/events.json']) assert.ok(shipped.includes(asset), asset);
+  for (const asset of ['bin/langfuse-helper.mjs', 'scripts/setup.mjs', 'collector/compose.yaml', 'collector/correlator.mjs', '.codebuddy-plugin/marketplace.json', 'plugins/workbuddy-langfuse/hooks/events.json', '.agents/plugins/marketplace.json', 'plugins/codex-langfuse/runtime/hook.mjs', 'plugins/codex-langfuse/vendor/LICENSE']) assert.ok(shipped.includes(asset), asset);
   assert.ok(!shipped.some(path => /(^|\/)(\.env[^/]*|\.local|dist|test)(\/|$)|\.command$|\.sqlite$/.test(path)));
   const config = { ...readConfig({ file: f.config, env: {} }), data_directory: f.state };
-  await writeConfig(config, f.config); await mkdir(f.state);
+  await writeConfig(config, f.config); await mkdir(f.state, { recursive: true });
   const saved = await readFile(f.config, 'utf8');
+  const savedProfile = await readFile(join(f.env.LANGFUSE_HELPER_HOME, 'config.json'), 'utf8');
   const records = [{ key: 'trace:span', digest: 'digest', payload: {} }];
   let ledger = new DeliveryLedger(join(f.state, 'langfuse-deliveries.sqlite'), 'http://fixture/project');
   ledger.reserve(records); ledger.finish(records, 'accepted'); ledger.close();
@@ -76,11 +83,12 @@ test('npm package installs globally outside the source, updates and uninstalls w
   run('npm', ['uninstall', '--global', '--prefix', prefix, '--ignore-scripts', '--no-audit', '--no-fund', manifest.name], { cwd: tmpdir(), env: f.env });
   assert.equal(existsSync(executable), false);
   assert.equal(await readFile(f.config, 'utf8'), saved);
+  assert.equal(await readFile(join(f.env.LANGFUSE_HELPER_HOME, 'config.json'), 'utf8'), savedProfile);
   assert.ok(existsSync(join(f.state, 'langfuse-deliveries.sqlite')));
 });
 
 test('status --json forwards authenticated runtime data and preserves failure exit codes', async t => {
-  const f = await fixture(t); await mkdir(f.state);
+  const f = await fixture(t); await mkdir(f.state, { recursive: true });
   const expected = { queue: 2, sessions: [], faults: [] };
   const server = createServer((req, res) => {
     assert.equal(req.url, '/status'); assert.equal(req.headers.authorization, 'Bearer test-token');

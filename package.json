@@ -1,19 +1,21 @@
 {
   "name": "langfuse-helper",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "private": true,
   "type": "module",
   "engines": {
     "node": ">=24"
   },
   "scripts": {
-    "test": "node --test test/*.test.mjs",
+    "test": "npm run build && node --test test/*.test.mjs",
     "test:collector": "node scripts/test-collector.mjs",
     "test:plugin": "node scripts/test-plugin.mjs",
     "test:langfuse": "node scripts/test-langfuse.mjs",
-    "package": "node scripts/package.mjs"
+    "package": "npm run build && node scripts/package.mjs",
+    "build": "node scripts/build.mjs",
+    "test:codex:langfuse": "npm run build && node scripts/test-codex-langfuse.mjs"
   },
-  "description": "Langfuse integration CLI for AI agents, with WorkBuddy support",
+  "description": "Discover local AI agents and connect WorkBuddy and Codex to Langfuse",
   "bin": {
     "langfuse-helper": "bin/langfuse-helper.mjs"
   },
@@ -23,7 +25,8 @@
     "collector/",
     "plugins/",
     ".codebuddy-plugin/",
-    "docs/"
+    "docs/",
+    ".agents/plugins/marketplace.json"
   ],
   "os": [
     "darwin"
@@ -31,5 +34,8 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/fine405/workbuddy-langfuse-plugin.git"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.12"
   }
 }

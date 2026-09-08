@@ -1,15 +1,12 @@
-import { createInterface } from 'node:readline/promises';
-import { Writable } from 'node:stream';
 import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { root, local, app, requireWorkBuddyClosed } from './cli.mjs';
-import { readConfig, writeConfig, configPath, stateDirectory } from './settings.mjs';
+import { readConfig, configPath } from './settings.mjs';
 import { connectLangfuse } from './recovery.mjs';
 import { runtimeRequest } from './sidecar.mjs';
-import { collectConfig } from './wizard.mjs';
 import { isMain } from './entry.mjs';
 
 function run(script, argument) {
@@ -29,55 +26,6 @@ export function assertSameTarget(directory, target) {
       if (targets.some(previous => previous !== target)) throw new Error('The delivery ledger belongs to a different Langfuse project. Configuration was not saved. Use a separate data directory for a new project and retain the existing ledger.');
     } finally { db.close(); }
   }
-}
-
-export async function verifyAndSave(config, { file = configPath, directory = stateDirectory(config), onVerified = () => {} } = {}) {
-  const previous = readConfig({ file, env: {} });
-  if (!config.enabled && ['base_url', 'public_key', 'secret_key'].every(key => config[key] === previous[key])) {
-    return writeConfig({ ...config, data_directory: directory }, file);
-  }
-  const connected = await connectLangfuse(config);
-  assertSameTarget(directory, connected.target);
-  onVerified(connected);
-  return writeConfig({ ...config, base_url: connected.base, project_name: connected.project.name,
-    project_id: connected.project.id, data_directory: directory }, file);
-}
-
-export async function configure() {
-  if (!process.stdin.isTTY) throw new Error(`Run langfuse-helper workbuddy configure in an interactive terminal, or edit ${configPath}`);
-  let hidden = false;
-  const output = new Writable({ write(chunk, encoding, done) { if (!hidden) process.stdout.write(chunk, encoding); done(); } });
-  const rl = createInterface({ input: process.stdin, output, terminal: true });
-  rl.on('SIGINT', () => { rl.close(); });
-  const ask = label => rl.question(label);
-  const secret = async label => {
-    process.stdout.write(label); hidden = true;
-    try { return await ask(''); } finally { hidden = false; process.stdout.write('\n'); }
-  };
-  try {
-    const current = readConfig();
-    if (Object.keys(process.env).some(key => /^(WORKBUDDY_)?LANGFUSE_(BASE_URL|PUBLIC_KEY|SECRET_KEY)$/.test(key))) {
-      console.log('Langfuse environment variables override the configuration file. Clear outdated overrides before restarting capture.');
-    }
-    const config = await collectConfig(current, { ask, secret, log: console.log, openBrowser: async url => {
-      const result = spawnSync('open', [url], { stdio: 'ignore' });
-      if (result.error || result.status !== 0) console.log(`Open this URL in your browser: ${url}`);
-    } });
-    console.log('Checking configuration...');
-    const saved = await verifyAndSave(config, { onVerified: connected => console.log(`Verified: ${connected.base} -> project "${connected.project.name}"`) });
-    console.log(`Configuration saved: ${configPath}\nLangfuse URL: ${saved.base_url}\nProject: ${saved.project_name}\nCapture: ${saved.enabled ? 'enabled' : 'disabled'}; content: ${saved.content}`);
-    console.log('Restart capture to apply configuration changes. Content mode applies to new sessions. The delivery ledger is retained.');
-    if (!saved.enabled) {
-      const answer = (await ask('Stop capture and delivery now? [Y/n]: ')).trim().toLowerCase();
-      if (!answer || ['y', 'yes'].includes(answer)) await stop();
-      else console.log('Capture is disabled in the saved configuration. Run langfuse-helper workbuddy stop to stop running processes.');
-      return saved;
-    }
-    try { requireWorkBuddyClosed(); }
-    catch { console.log('Quit WorkBuddy completely, then run langfuse-helper workbuddy start to apply the settings.'); return saved; }
-    if (['y', 'yes'].includes((await ask('Start WorkBuddy with capture now? [y/N]: ')).trim().toLowerCase())) await start();
-    return saved;
-  } finally { rl.close(); }
 }
 
 async function ensureDocker() {
@@ -109,7 +57,7 @@ export async function assertServiceAvailable(port = Number(process.env.WB_LF_SER
 async function start() {
   requireWorkBuddyClosed();
   const config = readConfig();
-  if (!config.public_key || !config.secret_key) { await configure(); return; }
+  if (!config.public_key || !config.secret_key) throw new Error('Run langfuse-helper workbuddy configure first.');
   if (!config.enabled) throw new Error('Capture is disabled. Run langfuse-helper workbuddy configure to enable it before starting.');
   const connected = await connectLangfuse(config);
   assertSameTarget(local, connected.target);
@@ -156,7 +104,6 @@ async function status() {
 
 async function main() {
   switch (process.argv[2] || 'help') {
-    case 'configure': return configure();
     case 'start': return start();
     case 'stop': return stop();
     case 'status': return status();

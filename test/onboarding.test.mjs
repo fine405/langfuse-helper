@@ -6,8 +6,9 @@ import { tmpdir } from 'node:os';
 import { createServer } from 'node:http';
 import { readConfig, writeConfig } from '../scripts/settings.mjs';
 import { collectConfig } from '../scripts/wizard.mjs';
-import { verifyAndSave, assertServiceAvailable } from '../scripts/setup.mjs';
-import { DeliveryLedger } from '../scripts/langfuse.mjs';
+import { assertServiceAvailable } from '../scripts/setup.mjs';
+import { connectLangfuse } from '../scripts/delivery.mjs';
+import { saveAgent, setAgentEnabled, readProfiles, profilePath } from '../scripts/profiles.mjs';
 
 async function fixture(t) {
   const directory = await mkdtemp(join(tmpdir(), "wb lf setup ' "));
@@ -72,8 +73,12 @@ test('existing users retain keys and skip creation; custom organization and proj
   assert.equal(changed.content, 'text'); assert.equal(changed.enabled, false);
 });
 
-test('real HTTP validation saves the actual project, rejects auth failure and refuses a different ledger target', async t => {
-  const f = await fixture(t), state = join(f.directory, 'state'); await mkdir(state);
+test('real HTTP validation saves the actual project, rejects auth failure and refuses target retargeting', async t => {
+  const f = await fixture(t);
+  const previousHome = process.env.LANGFUSE_HELPER_HOME;
+  process.env.LANGFUSE_HELPER_HOME = f.home;
+  t.after(() => { if (previousHome === undefined) delete process.env.LANGFUSE_HELPER_HOME; else process.env.LANGFUSE_HELPER_HOME = previousHome; });
+  const verifyAndSave = async config => saveAgent('workbuddy', 'workbuddy', config, await connectLangfuse(config));
   let project = { id: 'project-one', name: 'Actual project' }, reject = false;
   const server = createServer((req, res) => {
     assert.equal(req.url, '/api/public/projects');
@@ -85,20 +90,18 @@ test('real HTTP validation saves the actual project, rejects auth failure and re
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   t.after(() => new Promise(resolve => server.close(resolve)));
   const config = { ...readConfig(f.options), enabled: true, base_url: `http://127.0.0.1:${server.address().port}`, public_key: 'pk-fixture', secret_key: 'sk-fixture' };
-  const saved = await verifyAndSave(config, { file: f.file, directory: state });
+  const saved = await verifyAndSave(config);
   assert.equal(saved.project_name, 'Actual project'); assert.equal(saved.project_id, 'project-one');
-  const original = await readFile(f.file, 'utf8');
+  const original = await readFile(profilePath(), 'utf8');
   reject = true;
-  await assert.rejects(verifyAndSave(config, { file: f.file, directory: state }), /401/);
-  assert.equal(await readFile(f.file, 'utf8'), original);
-  await verifyAndSave({ ...saved, enabled: false }, { file: f.file, directory: state });
-  assert.equal(readConfig({ file: f.file, env: {} }).enabled, false, 'Existing users can disable capture while Langfuse is unavailable');
-  await writeFile(f.file, original); reject = false;
-  const ledger = new DeliveryLedger(join(state, 'langfuse-deliveries.sqlite'), `${config.base_url}/project-one`);
-  ledger.reserve([{ key: 'trace:span', digest: 'digest', payload: {} }]); ledger.close();
+  await assert.rejects(verifyAndSave(config), /401/);
+  assert.equal(await readFile(profilePath(), 'utf8'), original);
+  setAgentEnabled('workbuddy', false);
+  assert.equal(readProfiles().agents.workbuddy.enabled, false, 'Capture can be disabled while Langfuse is unavailable');
+  await writeFile(profilePath(), original); reject = false;
   project = { id: 'project-two', name: 'Wrong project' };
-  await assert.rejects(verifyAndSave(config, { file: f.file, directory: state }), /different Langfuse project/);
-  assert.equal(await readFile(f.file, 'utf8'), original);
+  await assert.rejects(verifyAndSave(config), /different project/);
+  assert.equal(await readFile(profilePath(), 'utf8'), original);
 });
 
 test('start refuses an unrelated service before changing Collector, and accepts its own authenticated service', async t => {
