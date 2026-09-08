@@ -1,15 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, rm, readFile, writeFile, cp, stat } from 'node:fs/promises';
+import { mkdtemp, mkdir, rm, readFile, writeFile, appendFile, cp, stat } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createServer } from 'node:http';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
+import { setTimeout as delay } from 'node:timers/promises';
 import { discoverAgents } from '../scripts/agents.mjs';
 import { defaults, projectRoot } from '../scripts/settings.mjs';
 import { readProfiles, saveAgent, profilePath, saveJson, setAgentEnabled } from '../scripts/profiles.mjs';
-import { capture, readRollout, recordsForTurn } from '../plugins/codex-langfuse/runtime/hook.mjs';
+import { capture, readRollout, recordsForTurn, waitForCompletedTurn } from '../plugins/codex-langfuse/runtime/hook.mjs';
 import { DeliveryLedger, reconcileDeliveries, connectLangfuse } from '../scripts/delivery.mjs';
 
 async function fixture(t) {
@@ -130,6 +131,58 @@ test('Codex acknowledgement loss blocks replay, then exact remote reconciliation
   assert.equal(remote.batches.length, 1);
 });
 
+test('Codex Stop returns before task_complete is persisted, then uploads the finished turn without another hook', async t => {
+  const f = await fixture(t), remote = await endpoint(t), config = configure('codex', remote.base);
+  const file = f.rollout('rollout-basic-main.jsonl');
+  const lines = (await readFile(file, 'utf8')).trimEnd().split('\n'), completion = lines.pop();
+  await writeFile(file, lines.join('\n') + '\n');
+  const input = { transcript_path: file, session_id: 'sess-basic', turn_id: 'turn-1' };
+  const runHook = () => new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [join(projectRoot, 'plugins/codex-langfuse/runtime/hook.mjs')],
+      { env: process.env, stdio: ['pipe', 'ignore', 'pipe'] });
+    let error = ''; child.stderr.on('data', data => { error += data; });
+    const timer = setTimeout(() => { child.kill(); reject(new Error('Stop hook blocked completion')); }, 5000);
+    child.once('error', reject);
+    child.once('close', code => { clearTimeout(timer); code === 0 ? resolve() : reject(new Error(error)); });
+    child.stdin.end(JSON.stringify(input));
+  });
+  await runHook();
+  assert.equal(remote.batches.length, 0);
+  const statusPath = join(config.data_directory, 'status.json');
+  assert.equal(JSON.parse(await readFile(statusPath, 'utf8')).phase, 'waiting-for-turn-complete');
+  // Codex writes this only after Stop has returned. Waiting inside the hook would deadlock.
+  await appendFile(file, completion + '\n');
+  let status;
+  for (let i = 0; i < 100; i++) {
+    status = JSON.parse(await readFile(statusPath, 'utf8'));
+    if (status.lastSuccess) break;
+    await delay(50);
+  }
+  assert.equal(status.uploaded, 4);
+  assert.equal(status.deliveries.accepted, 4);
+  assert.equal(remote.batches.length, 1);
+  await runHook();
+  for (let i = 0; i < 100; i++) {
+    status = JSON.parse(await readFile(statusPath, 'utf8'));
+    if (status.lastSuccess) break;
+    await delay(50);
+  }
+  assert.equal(status.uploaded, 0);
+  assert.equal(remote.batches.length, 1);
+});
+
+test('Codex incomplete hook turns cannot be reported as a successful empty upload, and completion waiting is bounded', async t => {
+  const f = await fixture(t), remote = await endpoint(t), config = configure('codex', remote.base);
+  const file = f.rollout('rollout-basic-main.jsonl');
+  const lines = (await readFile(file, 'utf8')).trimEnd().split('\n'); lines.pop();
+  await writeFile(file, lines.join('\n') + '\n');
+  const input = { transcript_path: file, turn_id: 'turn-1' };
+  await assert.rejects(capture(input), /not complete/);
+  await assert.rejects(waitForCompletedTurn(input, { timeoutMs: 20, pollIntervalMs: 5 }), /Timed out waiting/);
+  assert.equal(existsSync(join(config.data_directory, 'status.json')), false);
+  assert.equal(remote.batches.length, 0);
+});
+
 test('Codex starts at the hook turn, excludes unfinished turns, preserves content mode, and preview writes no state', async t => {
   const f = await fixture(t), remote = await endpoint(t);
   configure('codex', remote.base);
@@ -157,7 +210,8 @@ test('Codex cached hook installs and removes with the real CLI in an isolated ho
   assert.match(run(['install']), /Installation does not grant hook trust/);
   const list = JSON.parse(spawnSync(executable, ['plugin', 'list', '--json'], { env, encoding: 'utf8' }).stdout);
   assert.equal(list.installed[0].pluginId, 'codex-langfuse@personal');
-  const cached = join(env.CODEX_HOME, 'plugins/cache/personal/codex-langfuse/0.7.0/runtime/hook.mjs');
+  const version = JSON.parse(await readFile(join(projectRoot, 'plugins/codex-langfuse/.codex-plugin/plugin.json'), 'utf8')).version;
+  const cached = join(env.CODEX_HOME, 'plugins/cache/personal/codex-langfuse', version, 'runtime/hook.mjs');
   assert.ok(existsSync(cached));
   // The cached bundle runs with Node only, without importing the helper installation.
   const hook = spawnSync(process.execPath, [cached, '--report'], { env, input: '{}', encoding: 'utf8', cwd: tmpdir() });

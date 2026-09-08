@@ -65,7 +65,7 @@ langfuse-helper codex status
 langfuse-helper codex stop
 ```
 
-扩展启用、hook 已信任、采集开关打开后，正常启动 Codex 也可采集。每轮结束时上报，Langfuse Session 为 `codex:<thread-id>`。`stop` 关闭后续采集，已进行中的发送可能完成，Codex 保持打开。
+扩展启用、hook 已信任、采集开关打开后，正常启动 Codex 也可采集。Stop hook 先返回，后台进程等本轮完成标记落盘后上报，Langfuse Session 为 `codex:<thread-id>`。`stop` 关闭后续采集，已进行中的发送可能完成，Codex 保持打开。
 
 更换目标后新建任务；旧任务保留原目标和正文模式。首次采集从当前轮开始，不自动回灌此前所有轮次。
 

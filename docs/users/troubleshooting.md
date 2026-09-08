@@ -30,7 +30,7 @@ langfuse-helper codex status
 1. `codex status` 中 enabled 是否为 true，插件是否已安装且 enabled。
 2. 在新 Codex 任务的 `/hooks` 中确认 Stop hook 已审阅并信任。安装或更新不会自动代替这一步。
 3. Hook 执行环境是否能找到 Node.js 24+。终端启动由 helper 补充当前 Node 的目录；已打开的桌面应用不会继承新终端环境，必要时退出后重新启动。
-4. 完成一轮，再检查 `lastRun` 和 deliveries。Codex 按轮次结束上报，不显示 WorkBuddy 式的持续活动状态。
+4. 完成一轮，稍等后检查 `lastRun` 和 deliveries。`waiting-for-turn-complete` 表示后台进程正在等待本轮写入完成标记，最多等待 60 秒；超时会记录错误。Codex 按轮次结束上报。
 5. 更换 target 后新建任务。提示任务属于其他目标时，选回原 target 处理旧任务。
 6. 子任务尚未完成或文件尚未出现时，等全部结束再通过下述 export 重试。
 

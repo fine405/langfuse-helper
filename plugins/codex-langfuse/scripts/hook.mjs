@@ -1,6 +1,9 @@
 import { readFile, readdir } from 'node:fs/promises';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join, dirname, resolve, basename } from 'node:path';
+import { spawn } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import { setTimeout as delay } from 'node:timers/promises';
 import { parseSession } from '../vendor/parse.ts';
 import { resolveAgent, readProfiles, helperHome, readJson, saveJson, digest } from '../../../scripts/profiles.mjs';
 import { DeliveryLedger, connectLangfuse, sendRecords } from '../../../scripts/delivery.mjs';
@@ -103,7 +106,19 @@ export async function recordsForTurn(file, parsed, turn, config) {
   return records;
 }
 
-export async function capture(input, { send = true } = {}) {
+export async function waitForCompletedTurn(input, { timeoutMs = 60000, pollIntervalMs = 100 } = {}) {
+  const deadline = Date.now() + timeoutMs, key = input.waitTurn || input.turn_id;
+  if (!key) throw new Error('The deferred capture is missing its turn identity.');
+  while (true) {
+    if (!readProfiles().agents.codex?.enabled) return;
+    const parsed = await readRollout(input.transcript_path);
+    if (parsed.turns.some(turn => turnKey(turn) === key && turn.completed)) return;
+    if (Date.now() >= deadline) throw new Error('Timed out waiting for Codex to persist the completed turn. Retry with codex export after completion.');
+    await delay(pollIntervalMs);
+  }
+}
+
+export async function capture(input, { send = true, defer = false } = {}) {
   if (!readProfiles().agents.codex?.enabled) return { enabled: false, uploaded: 0 };
   const config = resolveAgent('codex');
   if (!input.transcript_path) throw new Error('Hook payload is missing transcript_path.');
@@ -114,7 +129,8 @@ export async function capture(input, { send = true } = {}) {
   let binding = readJson(bindingPath, null);
   if (binding && binding.identity !== config.identity) throw new Error('This task belongs to a different target. Start a new Codex task, or select its original target.');
   if (!binding) {
-    const first = input.turn_id ? parsed.turns.find(turn => turn.turnId === input.turn_id) : parsed.turns.findLast(turn => turn.completed);
+    const first = input.turn_id ? parsed.turns.find(turn => turn.turnId === input.turn_id)
+      : defer ? parsed.turns.at(-1) : parsed.turns.findLast(turn => turn.completed);
     if (!first) throw new Error('The completed hook turn is not available in the rollout yet.');
     binding = { identity: config.identity, first: turnKey(first), content: config.content, maxContentChars: config.maxContentChars };
     if (send) {
@@ -126,6 +142,25 @@ export async function capture(input, { send = true } = {}) {
   }
   const firstIndex = parsed.turns.findIndex(turn => turnKey(turn) === binding.first);
   if (firstIndex < 0) throw new Error('The original capture boundary is missing. Export stopped.');
+  if (defer) {
+    const turn = input.turn_id ? parsed.turns.find(turn => turn.turnId === input.turn_id) : parsed.turns.at(-1);
+    if (!turn) throw new Error('The hook turn is not available in the rollout yet.');
+    const status = { enabled: true, phase: 'waiting-for-turn-complete', turnId: turnKey(turn), target: config.targetName, updatedAt: new Date().toISOString() };
+    saveJson(join(config.data_directory, 'status.json'), status);
+    // Codex persists task_complete after Stop returns. The worker must not retain the hook's pipes.
+    const child = spawn(process.execPath, [fileURLToPath(import.meta.url), '--after-stop'], {
+      detached: true, stdio: ['pipe', 'ignore', 'ignore'],
+    });
+    await new Promise((resolve, reject) => {
+      child.once('error', reject); child.stdin.once('error', reject);
+      child.stdin.end(JSON.stringify({ ...input, waitTurn: turnKey(turn) }), resolve);
+    });
+    child.unref();
+    return status;
+  }
+  if (input.turn_id && !parsed.turns.find(turn => turn.turnId === input.turn_id)?.completed) {
+    throw new Error('The hook turn is not complete in the rollout yet. Retry after completion.');
+  }
   const settings = { ...config, content: binding.content, maxContentChars: binding.maxContentChars };
   const selected = parsed.turns.slice(firstIndex).filter(turn => turn.completed);
   if (!send) {
@@ -171,7 +206,10 @@ if (isMain(import.meta.url)) {
   try {
     let text = '';
     for await (const chunk of process.stdin) text += chunk;
-    const result = await capture(JSON.parse(text), { send: !process.argv.includes('--preview') });
+    const input = JSON.parse(text), afterStop = process.argv.includes('--after-stop');
+    if (afterStop) await waitForCompletedTurn(input);
+    const result = await capture(input, { send: !process.argv.includes('--preview'),
+      defer: !afterStop && !process.argv.includes('--report') && !process.argv.includes('--preview') });
     if (process.argv.includes('--report')) console.log(JSON.stringify(result, null, 2));
   } catch (error) {
     try { saveJson(join(resolveAgent('codex').data_directory, 'status.json'), { lastFailure: new Date().toISOString(), error: error.message }); } catch {}

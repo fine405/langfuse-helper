@@ -6,29 +6,34 @@
 sequenceDiagram
   participant A as Codex
   participant H as Stop hook
+  participant S as 短时后台发送进程
   participant R as Rollout 文件
   participant B as 任务绑定与轮次记录
   participant D as 发送账本
   participant L as Langfuse
-  A->>H: 本轮结束，提供 transcript_path 与身份
+  A->>H: 准备结束，提供 transcript_path 与身份
   H->>B: 读取开关、固定目标、内容模式
   H->>R: 重读 rollout，重建轮次与调用树
   H->>B: 首次从当前轮建立采集边界
+  H->>S: 启动后台发送，传递当前轮身份
+  H-->>A: 返回，让 Codex 继续完成本轮
+  A->>R: 写入 task_complete
+  S->>R: 等待当前轮完成标记，重读完整轮次
   loop 边界之后已完成的轮次
-    H->>B: 该轮是否已确认完成？
+    S->>B: 该轮是否已确认完成？
     alt 已确认
-      B-->>H: 跳过，不发送该轮
+      B-->>S: 跳过，不发送该轮
     else 尚未确认
-      H->>H: 等待完整子任务树，映射稳定 trace/span ID
-      H->>D: 查询 ID 与正文摘要，预留 sending
-      D-->>H: 已接受的 observation 跳过
-      H->>L: 发送剩余 observation
+      S->>S: 检查完整子任务树，映射稳定 trace/span ID
+      S->>D: 查询 ID 与正文摘要，预留 sending
+      D-->>S: 已接受的 observation 跳过
+      S->>L: 发送剩余 observation
       alt 完整 HTTP 接收确认
-        L-->>H: 成功响应
-        H->>D: 标记 accepted
-        H->>B: 全轮确认后标记完成
+        L-->>S: 成功响应
+        S->>D: 标记 accepted
+        S->>B: 全轮确认后标记完成
       else 响应不确定
-        H->>D: 标记 uncertain，阻止自动重放
+        S->>D: 标记 uncertain，阻止自动重放
       end
     end
   end
@@ -36,7 +41,8 @@ sequenceDiagram
 
 这里有两个层次：轮次记录避免反复构造和上传已完成轮；账本以 `target + traceId:spanId + digest` 处理跨进程重试、部分完成与响应丢失。实际 Project 身份同时参与目录隔离与账本查询。
 
-- 首次 Stop 默认从当前轮开始，缺少 turn ID 时从最后一个已完成轮开始，不自动补发更早历史。
+- Stop 早于 `task_complete` 落盘，不能在 hook 内阻塞等待。后台进程最多等待 60 秒；超时记录错误，不把“尚未完成”记作上传成功。
+- 首次 Stop 从当前轮开始，缺少 turn ID 时固定当时的最后一轮；手动 export 默认从最后一个已完成轮开始。不自动补发更早历史。
 - 未完成轮不发送。子任务文件缺失或子任务仍未完成时保留待处理状态，等后续 Stop，或完成后显式 `codex export <rollout-path> --send`。
 - 子任务挂在父轮下，不单独由自己的 Stop 重复生成主 Trace。当前实现以父轮导出时已完整的树为快照；已确认父轮不会追补之后新产生的子任务轮次。
 - HTTP 接收确认不是“页面已可见”，Langfuse 异步入库可能延迟。

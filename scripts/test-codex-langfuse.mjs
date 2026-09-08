@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, readFile, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, writeFile, appendFile, rm } from 'node:fs/promises';
+import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -30,7 +31,22 @@ try {
   }).join('\n') + '\n');
   const parsed = await readRollout(file);
   const expected = spansFrom((await recordsForTurn(file, parsed, parsed.turns[0], config)).map(record => record.payload));
-  const first = await capture({ transcript_path: file });
+  const lines = (await readFile(file, 'utf8')).trimEnd().split('\n'), completion = lines.pop();
+  await writeFile(file, lines.join('\n') + '\n');
+  const hook = spawnSync(process.execPath, [join(projectRoot, 'plugins/codex-langfuse/runtime/hook.mjs')], {
+    input: JSON.stringify({ transcript_path: file, session_id: sessionId, turn_id: parsed.turns[0].turnId }),
+    encoding: 'utf8', timeout: 5000,
+  });
+  assert.equal(hook.status, 0, hook.stderr);
+  const statusFile = join(config.data_directory, 'status.json');
+  assert.equal(JSON.parse(await readFile(statusFile, 'utf8')).phase, 'waiting-for-turn-complete');
+  await appendFile(file, completion + '\n');
+  let first;
+  for (let i = 0; i < 100; i++) {
+    first = JSON.parse(await readFile(statusFile, 'utf8'));
+    if (first.lastSuccess || first.lastFailure) break;
+    await delay(100);
+  }
   assert.equal(first.uploaded, 4);
   assert.equal((await capture({ transcript_path: file })).uploaded, 0);
   let result, actual;
@@ -45,7 +61,7 @@ try {
   assert.equal(Object.values(tokenBreakdown).reduce((sum, value) => sum + value, 0), 300);
   const checks = Object.fromEntries(Object.entries(result.checks).filter(([key]) => !['credits', 'configuredCost'].includes(key)));
   console.log(JSON.stringify({ passed: true, sessionId: `codex:${sessionId}`, checks, observations: result.observations, tokenBreakdown,
-    repeatedHookUploaded: 0, note: 'Synthetic Codex rollout retained in Langfuse; no user conversation or Codex login data was read.' }, null, 2));
+    deferredStopPassed: true, repeatedHookUploaded: 0, note: 'Synthetic Codex rollout retained in Langfuse; no user conversation or Codex login data was read.' }, null, 2));
 } finally {
   if (previous === undefined) delete process.env.LANGFUSE_HELPER_HOME; else process.env.LANGFUSE_HELPER_HOME = previous;
   await rm(directory, { recursive: true, force: true });

@@ -1,6 +1,6 @@
 {
   "name": "codex-langfuse",
-  "version": "0.7.0",
+  "version": "0.7.0+codex.20260908101307",
   "description": "Send Codex turn structure and usage to a Langfuse Helper target.",
   "author": {
     "name": "langfuse-helper contributors"

@@ -16,10 +16,11 @@ flowchart LR
     WT --> WS
   end
   subgraph CX[Codex 接入]
-    C[Codex 完成一轮] -->|Stop hook 已被用户信任| CH[独立打包的 Hook]
-    CR[本地 rollout 文件] -->|重读并解析| CH
-    CB[任务固定的目标与内容模式] --> CH
-    CH --> CT[筛选未确认的完整轮次]
+    C[Codex 准备结束一轮] -->|Stop hook 已被用户信任| CH[独立打包的 Hook]
+    CH -->|固定采集边界后返回| CW[短时后台发送进程]
+    CR[本地 rollout 文件] -->|等待完成标记后解析| CW
+    CB[任务固定的目标与内容模式] --> CW
+    CW --> CT[筛选未确认的完整轮次]
   end
   WS --> WD[WorkBuddy 目标账本]
   CT --> CD[Codex 目标账本]
@@ -29,7 +30,7 @@ flowchart LR
   LF -->|HTTP 确认或 observation 查询| TX
 ```
 
-图中的共用模块是两种运行进程引用的代码，不是一个新增的常驻网关。WorkBuddy 需要 Docker Collector 与后台服务；Codex hook 是短进程，不经过 WorkBuddy Collector，也不需要 Docker。
+图中的共用模块是两种运行进程引用的代码，不是一个新增的常驻网关。WorkBuddy 需要 Docker Collector 与后台服务；Codex hook 启动一个短时后台发送进程，等待本轮完成标记落盘后发送，不经过 WorkBuddy Collector，也不需要 Docker。
 
 ## 配置与状态
 
